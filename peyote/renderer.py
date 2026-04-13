@@ -85,7 +85,7 @@ def make_pattern_svg(fabric: list[list[int]], title: str,
     h = bh / 2.0
 
     # Scale label area for larger patterns
-    LABEL_W = 52; ARROW_W = 22
+    LABEL_W = 52; ARROW_W = 28
     PL = LABEL_W + ARROW_W + 8
     PT = 46; PB = 40
     SW = PL + config.columns * slot + 40
@@ -131,7 +131,7 @@ def make_pattern_svg(fabric: list[list[int]], title: str,
                       f'font-size="10" font-weight="500" fill="#666" '
                       f'font-family="Arial,sans-serif">{label}</text>'
                       f'<text x="{LABEL_W+ARROW_W//2+4}" y="{cy:.1f}" '
-                      f'text-anchor="middle" font-size="13" fill="#888" '
+                      f'text-anchor="middle" font-size="27" font-weight="700" fill="#555" '
                       f'font-family="Arial,sans-serif">{arrow}</text>')
 
         for bi, fc in enumerate(fab_cols):

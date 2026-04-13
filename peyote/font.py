@@ -11,6 +11,7 @@ def text_to_fabric(
     font_path: str | None = None,
     rotate: bool = True,
     char_height: int | None = None,
+    border: int = 0,
 ) -> list[list[int]]:
     """Convert text to a centered peyote fabric grid.
 
@@ -21,16 +22,23 @@ def text_to_fabric(
         font_path: TTF font path. Auto-detected if None.
         rotate: True for sideways-reading (rings), False for straight (bracelets).
         char_height: Override character height in rows.
+        border: Background beads to leave on each side, shrinking letter height.
 
     Returns:
         Fabric grid: config.rows x config.columns of 0/1 values.
     """
+    effective_columns = max(4, config.columns - 2 * border)
     pixel_rows = font_ttf.render_text_rows(
-        text, columns=config.columns,
+        text, columns=effective_columns,
         char_height=char_height,
         font_path=font_path,
         rotate=rotate,
     )
+
+    # Pad each row with border zeros on each side to restore full width
+    if border > 0:
+        pixel_rows = [[0] * border + row + [0] * (config.columns - effective_columns - border)
+                      for row in pixel_rows]
 
     return _center_in_grid(pixel_rows, config)
 

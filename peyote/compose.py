@@ -54,6 +54,7 @@ def compose_text_with_border(
     font_path: str | None = None,
     rotate: bool = True,
     border_color: int = 2,
+    border: int = 0,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text centered with decorative borders at the strip ends.
@@ -64,7 +65,8 @@ def compose_text_with_border(
     independently from the text foreground.
     """
     text_fabric = text_to_fabric(
-        text, config, font_mode=font_mode, font_path=font_path, rotate=rotate
+        text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
+        border=border,
     )
 
     # Generate border pattern
@@ -101,6 +103,7 @@ def compose_text_with_background(
     font_mode: str = 'auto',
     font_path: str | None = None,
     rotate: bool = True,
+    border: int = 0,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text overlaid on a decorative background. Text pixels override background."""
@@ -113,7 +116,8 @@ def compose_text_with_background(
     bg = pat_fn(**kwargs)
 
     text_grid = text_to_fabric(
-        text, config, font_mode=font_mode, font_path=font_path, rotate=rotate
+        text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
+        border=border,
     )
 
     return overlay(bg, text_grid)

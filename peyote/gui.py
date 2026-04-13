@@ -7,7 +7,7 @@ import base64
 from nicegui import ui, app
 
 from peyote.sizing import BeadConfig, PRESETS
-from peyote.colors import ColorPalette, PALETTE_DEFS, get_palette
+from peyote.colors import ColorPalette, PALETTE_DEFS
 from peyote.font import text_to_fabric
 from peyote.patterns import PATTERN_CATALOG
 from peyote.compose import (
@@ -21,8 +21,8 @@ from peyote.grid import count_beads
 
 
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
-                 border_rows_val, font_mode, rotate,
-                 use_palette, palette_name, bg_color, fg_color, border_color):
+                 border_rows_val, font_mode, rotate, border,
+                 bg_color, fg_color, border_color):
     """Build fabric grid and palette from current settings."""
     # Config
     if preset != 'custom':
@@ -32,35 +32,32 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
         config = BeadConfig(columns=columns, rows=rows)
 
     # Palette
-    if use_palette:
-        palette = get_palette(palette_name)
+    if layout == 'Text + Border':
+        palette = ColorPalette.three_color(bg_color, fg_color, border_color)
     else:
-        if layout == 'Text + Border':
-            palette = ColorPalette.three_color(bg_color, fg_color, border_color)
-        else:
-            palette = ColorPalette.two_color(bg_color, fg_color)
+        palette = ColorPalette.two_color(bg_color, fg_color)
 
     # Fabric
     if layout == 'Text Only':
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, border=border)
         title = text or 'Pattern'
     elif layout == 'Text + Border':
         fabric = compose_text_with_border(
             text or 'HELLO', config,
             border_pattern=pattern_name, border_rows=border_rows_val,
-            font_mode=font_mode, rotate=rotate)
+            font_mode=font_mode, rotate=rotate, border=border)
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
             text or 'HELLO', config,
             background_pattern=pattern_name,
-            font_mode=font_mode, rotate=rotate)
+            font_mode=font_mode, rotate=rotate, border=border)
         title = text or 'Pattern'
     elif layout == 'Pattern Only':
         fabric = compose_pattern_only(pattern_name, config)
         title = f'{pattern_name} pattern'
     else:
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, border=border)
         title = text or 'Pattern'
 
     return fabric, config, palette, title
@@ -83,10 +80,10 @@ def create_ui():
         'rows': 72,
         'layout': 'Text Only',
         'pattern': 'chevron',
+        'border': 0,
         'border_rows': 10,
         'font_mode': 'auto',  # kept for build_fabric compat
         'rotate': True,
-        'use_palette': False,
         'palette_name': 'classic',
         'bg_color': '#E8A0A8',
         'fg_color': '#C82020',
@@ -99,8 +96,7 @@ def create_ui():
             fabric, config, palette, title = build_fabric(
                 state['text'], state['preset'], state['columns'], state['rows'],
                 state['layout'], state['pattern'], state['border_rows'],
-                state['font_mode'], state['rotate'],
-                state['use_palette'], state['palette_name'],
+                state['font_mode'], state['rotate'], state['border'],
                 state['bg_color'], state['fg_color'], state['border_color'])
 
             # Fabric preview
@@ -119,7 +115,7 @@ def create_ui():
             # Bead count
             counts = count_beads(fabric, config)
             total = sum(counts.values())
-            count_lines = []
+            count_lines = [f'**{config.columns} beads per row**']
             for idx in sorted(counts.keys()):
                 name = palette.names.get(idx, f'Color {idx}')
                 lbl = palette.label(idx)
@@ -191,33 +187,35 @@ def create_ui():
     with ui.header().classes('bg-primary'):
         ui.label('Peyote Pattern Designer').classes('text-h5 text-white')
 
-    with ui.splitter(value=25).classes('w-full h-full') as splitter:
-        with splitter.before:
-            with ui.column().classes('w-full p-4 gap-2'):
-                # Size
-                ui.label('Size').classes('text-subtitle1 font-bold')
-                preset_select = ui.select(
-                    list(PRESETS.keys()) + ['custom'],
-                    value=state['preset'], label='Preset',
-                    on_change=lambda e: (
-                        state.update({'preset': e.value}),
-                        state.update({'columns': PRESETS[e.value].columns,
-                                      'rows': PRESETS[e.value].rows}
-                                     if e.value != 'custom' else {}),
-                        cols_input.set_value(state['columns']),
-                        rows_input.set_value(state['rows']),
-                        update_preview(),
-                    )
-                ).classes('w-full')
+    with ui.row().classes('w-full flex-wrap'):
+        with ui.column().classes('p-4 gap-2').style(
+            'min-width: 280px; flex: 0 0 25%; max-width: 100%;'
+        ):
+            # Size
+            ui.label('Size').classes('text-subtitle1 font-bold')
+            preset_select = ui.select(
+                list(PRESETS.keys()) + ['custom'],
+                value=state['preset'], label='Preset',
+                on_change=lambda e: (
+                    state.update({'preset': e.value}),
+                    state.update({'columns': PRESETS[e.value].columns,
+                                  'rows': PRESETS[e.value].rows}
+                                 if e.value != 'custom' else {}),
+                    cols_input.set_value(state['columns']),
+                    rows_input.set_value(state['rows']),
+                    update_preview(),
+                )
+            ).classes('w-full')
 
-                cols_input = ui.number('Columns', value=state['columns'],
+            with ui.row().classes('w-full gap-2'):
+                cols_input = ui.number('Cols', value=state['columns'],
                                        min=4, max=100, step=2,
                                        on_change=lambda e: (
                                            state.update({'columns': int(e.value) if e.value else 10,
                                                          'preset': 'custom'}),
                                            preset_select.set_value('custom'),
                                            update_preview(),
-                                       )).classes('w-full')
+                                       )).classes('flex-1')
 
                 rows_input = ui.number('Rows', value=state['rows'],
                                         min=10, max=500,
@@ -226,128 +224,137 @@ def create_ui():
                                                           'preset': 'custom'}),
                                             preset_select.set_value('custom'),
                                             update_preview(),
-                                        )).classes('w-full')
+                                        )).classes('flex-1')
 
-                ui.separator()
+                ui.number('Border', value=state['border'],
+                          min=0, max=20,
+                          on_change=lambda e: (
+                              state.update({'border': int(e.value) if e.value else 0}),
+                              update_preview(),
+                          )).classes('flex-1')
 
-                # Content
-                ui.label('Content').classes('text-subtitle1 font-bold')
-                layout_select = ui.select(
-                    ['Text Only', 'Text + Border', 'Text + Background', 'Pattern Only'],
-                    value=state['layout'], label='Layout',
-                    on_change=lambda e: (
-                        state.update({'layout': e.value}),
-                        update_preview(),
-                    )
-                ).classes('w-full')
+            ui.separator()
 
-                text_input = ui.input('Text', value=state['text'],
+            # Content
+            ui.label('Content').classes('text-subtitle1 font-bold')
+            layout_select = ui.select(
+                ['Text Only', 'Text + Border', 'Text + Background', 'Pattern Only'],
+                value=state['layout'], label='Layout',
+                on_change=lambda e: (
+                    state.update({'layout': e.value}),
+                    update_preview(),
+                )
+            ).classes('w-full')
+
+            text_input = ui.input('Text', value=state['text'],
+                                   on_change=lambda e: (
+                                       state.update({'text': e.value}),
+                                       update_preview(),
+                                   )).classes('w-full')
+
+            ui.switch('Sideways text (rings)',
+                      value=state['rotate'],
+                      on_change=lambda e: (
+                          state.update({'rotate': e.value}),
+                          update_preview(),
+                      ))
+
+            pattern_select = ui.select(
+                list(PATTERN_CATALOG.keys()),
+                value=state['pattern'], label='Pattern',
+                on_change=lambda e: (
+                    state.update({'pattern': e.value}),
+                    update_preview(),
+                )
+            ).classes('w-full')
+
+            border_slider = ui.slider(min=1, max=40, value=state['border_rows'],
+                                      on_change=lambda e: (
+                                          state.update({'border_rows': int(e.value)}),
+                                          update_preview(),
+                                      )).props('label')
+            ui.label('Border rows').classes('text-caption')
+
+            ui.separator()
+
+            # Colors
+            ui.label('Colors').classes('text-subtitle1 font-bold')
+
+            def apply_palette(name):
+                colors = PALETTE_DEFS[name]
+                state['bg_color'] = colors[0][0]
+                state['fg_color'] = colors[1][0]
+                if len(colors) > 2:
+                    state['border_color'] = colors[2][0]
+                bg_picker.set_value(state['bg_color'])
+                fg_picker.set_value(state['fg_color'])
+                border_picker.set_value(state['border_color'])
+                update_preview()
+
+            ui.select(
+                list(PALETTE_DEFS.keys()),
+                value=state['palette_name'], label='Palette',
+                on_change=lambda e: apply_palette(e.value),
+            ).classes('w-full')
+
+            bg_picker = ui.color_input('Background', value=state['bg_color'],
                                        on_change=lambda e: (
-                                           state.update({'text': e.value}),
+                                           state.update({'bg_color': e.value}),
                                            update_preview(),
                                        )).classes('w-full')
+            fg_picker = ui.color_input('Foreground', value=state['fg_color'],
+                                       on_change=lambda e: (
+                                           state.update({'fg_color': e.value}),
+                                           update_preview(),
+                                       )).classes('w-full')
+            border_picker = ui.color_input('Border', value=state['border_color'],
+                                           on_change=lambda e: (
+                                               state.update({'border_color': e.value}),
+                                               update_preview(),
+                                           )).classes('w-full')
 
-                ui.switch('Sideways text (rings)',
-                          value=state['rotate'],
-                          on_change=lambda e: (
-                              state.update({'rotate': e.value}),
-                              update_preview(),
-                          ))
+            ui.separator()
 
-                pattern_select = ui.select(
-                    list(PATTERN_CATALOG.keys()),
-                    value=state['pattern'], label='Pattern',
-                    on_change=lambda e: (
-                        state.update({'pattern': e.value}),
-                        update_preview(),
-                    )
-                ).classes('w-full')
+            # Downloads
+            ui.label('Export').classes('text-subtitle1 font-bold')
+            with ui.row().classes('w-full gap-1'):
+                ui.button('PNG', on_click=download_png, icon='image').props('dense')
+                ui.button('SVG', on_click=download_svg, icon='code').props('dense')
+                ui.button('PDF', on_click=download_pdf, icon='picture_as_pdf').props('dense')
+                ui.button('JSON', on_click=download_json, icon='data_object').props('dense')
 
-                border_slider = ui.slider(min=1, max=40, value=state['border_rows'],
-                                          on_change=lambda e: (
-                                              state.update({'border_rows': int(e.value)}),
-                                              update_preview(),
-                                          )).props('label')
-                ui.label('Border rows').classes('text-caption')
+        with ui.column().classes('p-4 gap-2 items-start').style(
+            'min-width: 300px; flex: 1 1 0%;'
+        ):
+            with ui.row().classes('gap-2 items-center'):
+                ui.label('Zoom:').classes('text-caption')
+                ui.button(icon='remove', on_click=lambda: (
+                    state.update({'zoom': max(100, state['zoom'] - 50)}),
+                    update_preview(),
+                )).props('round outline').style('min-width: 40px; min-height: 40px;')
+                ui.button(icon='add', on_click=lambda: (
+                    state.update({'zoom': min(800, state['zoom'] + 50)}),
+                    update_preview(),
+                )).props('round outline').style('min-width: 40px; min-height: 40px;')
+                ui.button('Reset', on_click=lambda: (
+                    state.update({'zoom': 300}),
+                    update_preview(),
+                )).props('outline dense')
 
-                ui.separator()
+            with ui.row().classes('gap-4 items-start'):
+                with ui.column().classes('items-center'):
+                    ui.label('Working Pattern').classes('text-subtitle1 font-bold')
+                    pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                    with pattern_container:
+                        pattern_img = ui.image().classes('w-full')
+                with ui.column().classes('items-center'):
+                    ui.label('Fabric Preview').classes('text-subtitle1 font-bold')
+                    fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                    with fabric_container:
+                        fabric_img = ui.image().classes('w-full')
 
-                # Colors
-                ui.label('Colors').classes('text-subtitle1 font-bold')
-                ui.switch('Use named palette',
-                          value=state['use_palette'],
-                          on_change=lambda e: (
-                              state.update({'use_palette': e.value}),
-                              update_preview(),
-                          ))
-
-                palette_select = ui.select(
-                    list(PALETTE_DEFS.keys()),
-                    value=state['palette_name'], label='Palette',
-                    on_change=lambda e: (
-                        state.update({'palette_name': e.value}),
-                        update_preview(),
-                    )
-                ).classes('w-full')
-
-                with ui.row().classes('w-full gap-2'):
-                    ui.color_input('Background', value=state['bg_color'],
-                                   on_change=lambda e: (
-                                       state.update({'bg_color': e.value}),
-                                       update_preview(),
-                                   )).classes('w-1/3')
-                    ui.color_input('Foreground', value=state['fg_color'],
-                                   on_change=lambda e: (
-                                       state.update({'fg_color': e.value}),
-                                       update_preview(),
-                                   )).classes('w-1/3')
-                    ui.color_input('Border', value=state['border_color'],
-                                   on_change=lambda e: (
-                                       state.update({'border_color': e.value}),
-                                       update_preview(),
-                                   )).classes('w-1/3')
-
-                ui.separator()
-
-                # Downloads
-                ui.label('Export').classes('text-subtitle1 font-bold')
-                with ui.row().classes('w-full gap-1'):
-                    ui.button('PNG', on_click=download_png, icon='image').props('dense')
-                    ui.button('SVG', on_click=download_svg, icon='code').props('dense')
-                    ui.button('PDF', on_click=download_pdf, icon='picture_as_pdf').props('dense')
-                    ui.button('JSON', on_click=download_json, icon='data_object').props('dense')
-
-        with splitter.after:
-            with ui.column().classes('w-full p-4 gap-2 items-start'):
-                with ui.row().classes('gap-2 items-center'):
-                    ui.label('Zoom:').classes('text-caption')
-                    ui.button(icon='remove', on_click=lambda: (
-                        state.update({'zoom': max(100, state['zoom'] - 50)}),
-                        update_preview(),
-                    )).props('dense flat size=sm')
-                    ui.button(icon='add', on_click=lambda: (
-                        state.update({'zoom': min(800, state['zoom'] + 50)}),
-                        update_preview(),
-                    )).props('dense flat size=sm')
-                    ui.button('Reset', on_click=lambda: (
-                        state.update({'zoom': 300}),
-                        update_preview(),
-                    )).props('dense flat size=sm')
-
-                with ui.row().classes('gap-4 items-start'):
-                    with ui.column().classes('items-center'):
-                        ui.label('Working Pattern').classes('text-subtitle1 font-bold')
-                        pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
-                        with pattern_container:
-                            pattern_img = ui.image().classes('w-full')
-                    with ui.column().classes('items-center'):
-                        ui.label('Fabric Preview').classes('text-subtitle1 font-bold')
-                        fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
-                        with fabric_container:
-                            fabric_img = ui.image().classes('w-full')
-
-                ui.label('Bead Count').classes('text-subtitle1 font-bold')
-                bead_count_label = ui.markdown('').classes('w-full')
+            ui.label('Bead Count').classes('text-subtitle1 font-bold')
+            bead_count_label = ui.markdown('').classes('w-full')
 
     # Calculate initial border rows from default text
     if state['preset'] != 'custom':
