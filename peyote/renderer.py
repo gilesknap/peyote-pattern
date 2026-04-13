@@ -123,7 +123,7 @@ def make_pattern_svg(fabric: list[list[int]], title: str,
         elif N == 2:
             label, arrow = '', ''
         else:
-            label = f'R{N+1}'
+            label = f'R{N}'
             arrow = '\u2190' if is_odd else '\u2192'
 
         if label:
