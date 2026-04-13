@@ -1,7 +1,6 @@
-"""Unified font API — dispatches to bitmap or TTF engine."""
+"""Unified font API — generates bitmaps from TTF fonts at any size."""
 
 from .sizing import BeadConfig
-from . import font_bitmap
 from . import font_ttf
 
 
@@ -18,45 +17,22 @@ def text_to_fabric(
     Args:
         text: Text to render.
         config: Bead configuration (columns, rows).
-        font_mode: 'auto', 'ttf', or 'bitmap'.
-        font_path: TTF font path (for ttf mode).
+        font_mode: Ignored (kept for API compat). Always uses TTF.
+        font_path: TTF font path. Auto-detected if None.
         rotate: True for sideways-reading (rings), False for straight (bracelets).
         char_height: Override character height in rows.
 
     Returns:
         Fabric grid: config.rows x config.columns of 0/1 values.
     """
-    use_ttf = _should_use_ttf(font_mode, config)
-
-    if use_ttf:
-        pixel_rows = font_ttf.render_text_rows(
-            text, columns=config.columns,
-            char_height=char_height,
-            font_path=font_path,
-            rotate=rotate,
-        )
-    else:
-        if config.columns != 10:
-            # Bitmap font only works for 10 columns; fall back to TTF
-            pixel_rows = font_ttf.render_text_rows(
-                text, columns=config.columns,
-                char_height=char_height,
-                font_path=font_path,
-                rotate=rotate,
-            )
-        else:
-            pixel_rows = font_bitmap.render_text_rows(text)
+    pixel_rows = font_ttf.render_text_rows(
+        text, columns=config.columns,
+        char_height=char_height,
+        font_path=font_path,
+        rotate=rotate,
+    )
 
     return _center_in_grid(pixel_rows, config)
-
-
-def _should_use_ttf(font_mode: str, config: BeadConfig) -> bool:
-    if font_mode == 'ttf':
-        return True
-    if font_mode == 'bitmap':
-        return False
-    # auto: use bitmap for 10-col (ring), TTF for larger
-    return config.columns > 10
 
 
 def _center_in_grid(pixel_rows: list[list[int]], config: BeadConfig) -> list[list[int]]:

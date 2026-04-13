@@ -14,6 +14,7 @@ from peyote.compose import (
     compose_text_with_border,
     compose_text_with_background,
     compose_pattern_only,
+    default_border_rows,
 )
 from peyote.export import render_combined_png
 from peyote.grid import count_beads
@@ -21,7 +22,7 @@ from peyote.grid import count_beads
 
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
                  border_rows_val, font_mode, rotate,
-                 use_palette, palette_name, bg_color, fg_color):
+                 use_palette, palette_name, bg_color, fg_color, border_color):
     """Build fabric grid and palette from current settings."""
     # Config
     if preset != 'custom':
@@ -34,7 +35,10 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
     if use_palette:
         palette = get_palette(palette_name)
     else:
-        palette = ColorPalette.two_color(bg_color, fg_color)
+        if layout == 'Text + Border':
+            palette = ColorPalette.three_color(bg_color, fg_color, border_color)
+        else:
+            palette = ColorPalette.two_color(bg_color, fg_color)
 
     # Fabric
     if layout == 'Text Only':
@@ -80,12 +84,13 @@ def create_ui():
         'layout': 'Text Only',
         'pattern': 'chevron',
         'border_rows': 10,
-        'font_mode': 'auto',
+        'font_mode': 'auto',  # kept for build_fabric compat
         'rotate': True,
         'use_palette': False,
         'palette_name': 'classic',
         'bg_color': '#E8A0A8',
         'fg_color': '#C82020',
+        'border_color': '#8B4513',
         'zoom': 300,  # px max-width per image
     }
 
@@ -96,7 +101,7 @@ def create_ui():
                 state['layout'], state['pattern'], state['border_rows'],
                 state['font_mode'], state['rotate'],
                 state['use_palette'], state['palette_name'],
-                state['bg_color'], state['fg_color'])
+                state['bg_color'], state['fg_color'], state['border_color'])
 
             # Fabric preview
             png_bytes = render_to_bytes(fabric, title, config, palette, view='fabric')
@@ -238,14 +243,6 @@ def create_ui():
                                            update_preview(),
                                        )).classes('w-full')
 
-                font_select = ui.select(
-                    ['auto', 'ttf', 'bitmap'], value='auto', label='Font',
-                    on_change=lambda e: (
-                        state.update({'font_mode': e.value}),
-                        update_preview(),
-                    )
-                ).classes('w-full')
-
                 ui.switch('Sideways text (rings)',
                           value=state['rotate'],
                           on_change=lambda e: (
@@ -262,7 +259,7 @@ def create_ui():
                     )
                 ).classes('w-full')
 
-                border_slider = ui.slider(min=2, max=40, value=state['border_rows'],
+                border_slider = ui.slider(min=1, max=40, value=state['border_rows'],
                                           on_change=lambda e: (
                                               state.update({'border_rows': int(e.value)}),
                                               update_preview(),
@@ -294,12 +291,17 @@ def create_ui():
                                    on_change=lambda e: (
                                        state.update({'bg_color': e.value}),
                                        update_preview(),
-                                   )).classes('w-1/2')
+                                   )).classes('w-1/3')
                     ui.color_input('Foreground', value=state['fg_color'],
                                    on_change=lambda e: (
                                        state.update({'fg_color': e.value}),
                                        update_preview(),
-                                   )).classes('w-1/2')
+                                   )).classes('w-1/3')
+                    ui.color_input('Border', value=state['border_color'],
+                                   on_change=lambda e: (
+                                       state.update({'border_color': e.value}),
+                                       update_preview(),
+                                   )).classes('w-1/3')
 
                 ui.separator()
 
@@ -342,6 +344,16 @@ def create_ui():
 
                 ui.label('Bead Count').classes('text-subtitle1 font-bold')
                 bead_count_label = ui.markdown('').classes('w-full')
+
+    # Calculate initial border rows from default text
+    if state['preset'] != 'custom':
+        p = PRESETS[state['preset']]
+        cfg = BeadConfig(columns=p.columns, rows=state['rows'] or p.rows)
+    else:
+        cfg = BeadConfig(columns=state['columns'], rows=state['rows'])
+    br = default_border_rows(state['text'] or 'HELLO', cfg, rotate=state['rotate'])
+    state['border_rows'] = br
+    border_slider.set_value(br)
 
     # Initial render
     update_preview()

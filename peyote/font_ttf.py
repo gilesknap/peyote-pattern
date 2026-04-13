@@ -3,18 +3,21 @@
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# Search paths for monospace fonts
+# Search paths for proportional fonts first, then monospace fallbacks.
+# Regular weight preferred — bold produces strokes that are too thick at
+# small bead counts; the stroke-width normalisation pass ensures visibility.
 _FONT_SEARCH = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
-    '/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf',
+    '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
 ]
 
 
 def find_default_font() -> str:
-    """Find a suitable monospace font on the system."""
+    """Find a suitable font on the system."""
     for path in _FONT_SEARCH:
         if os.path.exists(path):
             return path
@@ -24,12 +27,36 @@ def find_default_font() -> str:
     )
 
 
+def _ensure_min_stroke_width(grid: list[list[int]], min_width: int = 2) -> list[list[int]]:
+    """Widen isolated horizontal pixels so every stroke is at least *min_width* beads.
+
+    In peyote stitch each row only shows half the columns, so single-pixel
+    strokes can vanish.  This pass extends any horizontally-isolated ON pixel
+    to the right (or left at the edge) to guarantee visibility.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    result = [row[:] for row in grid]
+    for y in range(h):
+        for x in range(w):
+            if grid[y][x] != 1:
+                continue
+            has_left = x > 0 and grid[y][x - 1] == 1
+            has_right = x < w - 1 and grid[y][x + 1] == 1
+            if not has_left and not has_right:
+                if x < w - 1:
+                    result[y][x + 1] = 1
+                elif x > 0:
+                    result[y][x - 1] = 1
+    return result
+
+
 def render_char_bitmap(
     char: str,
     columns: int,
     char_height: int,
     font_path: str | None = None,
-    threshold: int = 128,
+    threshold: int = 100,
     dilate: bool = False,
 ) -> list[list[int]]:
     """Render a single character to a binary bitmap grid.
@@ -48,9 +75,9 @@ def render_char_bitmap(
     if font_path is None:
         font_path = find_default_font()
 
-    # Render at ~10x target size for quality
-    render_size = max(columns, char_height) * 10
-    font_size = int(render_size * 0.8)
+    # Render at ~20x target size for quality
+    render_size = max(columns, char_height) * 20
+    font_size = int(render_size * 0.85)
 
     try:
         font = ImageFont.truetype(font_path, font_size)
@@ -58,10 +85,10 @@ def render_char_bitmap(
         raise FileNotFoundError(f"Cannot load font: {font_path}")
 
     # Draw character on grayscale canvas
-    canvas_size = render_size * 2
+    canvas_size = render_size * 3
     img = Image.new('L', (canvas_size, canvas_size), color=0)
     draw = ImageDraw.Draw(img)
-    draw.text((canvas_size // 4, canvas_size // 8), char, font=font, fill=255)
+    draw.text((render_size, render_size // 2), char, font=font, fill=255)
 
     # Crop to tight bounding box
     bbox = img.getbbox()
@@ -86,24 +113,64 @@ def render_char_bitmap(
             row.append(1 if pixel > threshold else 0)
         grid.append(row)
 
+    # Ensure every stroke is at least 2 beads wide (critical for peyote
+    # stitch where each row only shows alternate columns).
+    grid = _ensure_min_stroke_width(grid)
+
     return grid
+
+
+def _measure_char_widths(text: str, font_path: str, glyph_height: int,
+                         avg_width: int) -> list[int]:
+    """Measure the proportional width of each character.
+
+    Renders each character at high resolution, measures its bounding-box
+    width relative to the others, then allocates bead-widths proportionally
+    so wider letters like M/W get more beads than narrow ones like I.
+    """
+    scale = 20
+    font_size = int(glyph_height * scale * 0.85)
+    font = ImageFont.truetype(font_path, font_size)
+
+    raw_widths: list[int] = []
+    for ch in text:
+        canvas = glyph_height * scale * 3
+        img = Image.new('L', (canvas, canvas), color=0)
+        draw = ImageDraw.Draw(img)
+        draw.text((canvas // 3, canvas // 6), ch, font=font, fill=255)
+        bbox = img.getbbox()
+        raw_widths.append((bbox[2] - bbox[0]) if bbox else 1)
+
+    # Blend proportional widths toward the average so narrow letters (I)
+    # don't vanish and wide letters (M) don't dominate.
+    blend = 0.5  # 0 = monospace, 1 = fully proportional
+    mean_raw = sum(raw_widths) / len(raw_widths) if raw_widths else 1
+    widths = []
+    for w in raw_widths:
+        proportional = w / mean_raw * avg_width
+        blended = avg_width * (1 - blend) + proportional * blend
+        widths.append(max(4, round(blended)))
+    return widths
 
 
 def render_text_rows(
     text: str,
     columns: int,
     char_height: int | None = None,
-    char_spacing: int = 2,
+    char_spacing: int = 3,
     font_path: str | None = None,
     rotate: bool = True,
     dilate: bool = False,
 ) -> list[list[int]]:
     """Render text to pixel rows using TTF rendering.
 
+    Characters are rendered proportionally — wider letters (M, W) get more
+    bead-rows than narrow ones (I, L).
+
     Args:
         text: Text to render.
         columns: Bead column count of the piece.
-        char_height: Rows per character. Auto-calculated if None.
+        char_height: Average rows per character. Auto-calculated if None.
         char_spacing: Blank rows between characters.
         font_path: Path to TTF font. Auto-detected if None.
         rotate: If True, render upright then rotate 90 CW (for sideways reading).
@@ -115,37 +182,41 @@ def render_text_rows(
     text = text.upper()
 
     if rotate:
-        # Render upright: glyph is columns-tall x char_width-wide
-        # After 90 CW rotation: char_width rows x columns cols
-        glyph_height = columns  # reading height = strip width
+        glyph_height = columns
         if char_height is None:
-            char_height = max(5, int(columns * 0.7))  # reading width
-        glyph_width = char_height
+            char_height = max(5, int(columns * 0.9))
+        avg_width = char_height
     else:
-        # Render straight: glyph fills columns width
-        glyph_width = columns
+        glyph_height = None  # set per-char below
         if char_height is None:
             char_height = max(7, int(columns * 1.4))
-        glyph_height = char_height
+        avg_width = columns  # unused for non-rotate
 
     if font_path is None:
         font_path = find_default_font()
 
+    if rotate:
+        char_widths = _measure_char_widths(text, font_path, glyph_height, avg_width)
+    else:
+        char_widths = [columns] * len(text)
+
     rows: list[list[int]] = []
     for i, ch in enumerate(text):
         if i > 0:
-            if rotate:
-                for _ in range(char_spacing):
-                    rows.append([0] * columns)
-            else:
-                for _ in range(char_spacing):
-                    rows.append([0] * columns)
+            for _ in range(char_spacing):
+                rows.append([0] * columns)
 
-        glyph = render_char_bitmap(ch, glyph_width, glyph_height,
+        if rotate:
+            gw = char_widths[i]
+            gh = columns
+        else:
+            gw = columns
+            gh = char_height
+
+        glyph = render_char_bitmap(ch, gw, gh,
                                    font_path=font_path, dilate=dilate)
 
         if rotate:
-            # Rotate 90 CW: H rows x W cols -> W rows x H cols
             h = len(glyph)
             w = len(glyph[0]) if glyph else 0
             rotated = []

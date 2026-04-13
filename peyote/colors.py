@@ -44,6 +44,13 @@ class ColorPalette:
         """Convenience for the common two-color case."""
         return cls.from_pairs([(bg, bg_name), (fg, fg_name)])
 
+    @classmethod
+    def three_color(cls, bg: str, fg: str, border: str,
+                    bg_name: str = 'Background', fg_name: str = 'Foreground',
+                    border_name: str = 'Border') -> 'ColorPalette':
+        """Background + foreground + border color."""
+        return cls.from_pairs([(bg, bg_name), (fg, fg_name), (border, border_name)])
+
     def label(self, index: int) -> str:
         """Short label for a color index (A, B, C, ...)."""
         return chr(ord('A') + index)
