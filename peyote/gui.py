@@ -16,6 +16,7 @@ from peyote.compose import (
     compose_pattern_only,
 )
 from peyote.export import render_combined_png
+from peyote.renderer import make_fabric_svg, make_pattern_svg
 from peyote.grid import count_beads
 
 
@@ -63,11 +64,20 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
 
 
 def render_to_bytes(fabric, title, config, palette, view='fabric'):
-    """Render to PNG bytes."""
+    """Render to PNG bytes (for downloads)."""
     img = render_combined_png(fabric, title, config, palette, view=view)
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
+
+
+def render_svg(fabric, title, config, palette, view='fabric') -> str:
+    """Render SVG string directly (for live browser preview — skips cairosvg)."""
+    if view == 'pattern':
+        svg, _, _ = make_pattern_svg(fabric, title, config, palette)
+    else:
+        svg, _, _ = make_fabric_svg(fabric, title, config, palette)
+    return svg
 
 
 def create_ui():
@@ -97,13 +107,16 @@ def create_ui():
                 state['font_mode'], state['rotate'], state['margin'],
                 state['bg_color'], state['fg_color'], state['border_color'])
 
-            # Fabric preview
-            png_bytes = render_to_bytes(fabric, title, config, palette, view='fabric')
-            fabric_img.set_source(f'data:image/png;base64,{base64.b64encode(png_bytes).decode()}')
+            # Fabric preview — send SVG directly to browser (browser renders natively,
+            # avoiding the cairosvg→PNG roundtrip that dominates render time).
+            fabric_svg = render_svg(fabric, title, config, palette, view='fabric')
+            fabric_img.set_source(
+                f'data:image/svg+xml;base64,{base64.b64encode(fabric_svg.encode()).decode()}')
 
             # Pattern preview
-            pat_bytes = render_to_bytes(fabric, title, config, palette, view='pattern')
-            pattern_img.set_source(f'data:image/png;base64,{base64.b64encode(pat_bytes).decode()}')
+            pat_svg = render_svg(fabric, title, config, palette, view='pattern')
+            pattern_img.set_source(
+                f'data:image/svg+xml;base64,{base64.b64encode(pat_svg.encode()).decode()}')
 
             # Update zoom sizing
             z = state['zoom']
