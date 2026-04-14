@@ -409,3 +409,40 @@ PATTERN_CATALOG: dict[str, callable] = {
     'braid': braid,
     'honeycomb': honeycomb,
 }
+
+
+# "Repeat" maps the GUI's single repeat-in-beads control onto each pattern's
+# internal period parameter. Value shape: (kwarg_name, default_beads, convert).
+# Patterns missing from this dict don't have a meaningful periodic knob:
+# chevron spans the full column width, border is a single frame, gradient
+# dithers across the whole grid.
+PATTERN_REPEAT_SPEC: dict[str, tuple[str, int, callable]] = {
+    'stripe-h':  ('widths',     6, lambda r: [max(1, r // 2)] * 2),
+    'stripe-v':  ('widths',     4, lambda r: [max(1, r // 2)] * 2),
+    'diamond':   ('size',       8, lambda r: max(1, r // 2)),
+    'zigzag':    ('amplitude',  6, lambda r: max(1, r // 2)),
+    'checker':   ('block_size', 2, lambda r: max(1, r)),
+    'dots':      ('spacing',    4, lambda r: max(2, r)),
+    'wave':      ('period',     8, lambda r: max(2, r)),
+    'greek-key': ('size',       8, lambda r: max(1, r // 2)),
+    'argyle':    ('size',      10, lambda r: max(1, r // 2)),
+    'scales':    ('radius',     6, lambda r: max(1, r // 2)),
+    'flames':    ('size',      10, lambda r: max(1, r // 2)),
+    'braid':     ('period',     8, lambda r: max(2, r)),
+    'honeycomb': ('size',       6, lambda r: max(1, r // 2)),
+}
+
+
+def pattern_repeat_default(pattern_name: str) -> int | None:
+    """Default repeat (beads between repeats) for a pattern, or None if N/A."""
+    spec = PATTERN_REPEAT_SPEC.get(pattern_name)
+    return spec[1] if spec else None
+
+
+def pattern_repeat_kwargs(pattern_name: str, repeat: int | None) -> dict:
+    """Translate a repeat-in-beads value into the pattern's own kwargs."""
+    spec = PATTERN_REPEAT_SPEC.get(pattern_name)
+    if spec is None or repeat is None:
+        return {}
+    kwarg_name, _default, convert = spec
+    return {kwarg_name: convert(int(repeat))}

@@ -9,7 +9,9 @@ from nicegui import ui, app
 from peyote.sizing import BeadConfig, PRESETS
 from peyote.colors import ColorPalette, PALETTE_DEFS, darken
 from peyote.font import text_to_fabric
-from peyote.patterns import PATTERN_CATALOG
+from peyote.patterns import (
+    PATTERN_CATALOG, pattern_repeat_default, pattern_repeat_kwargs,
+)
 from peyote.compose import (
     compose_text_with_border,
     compose_text_with_background,
@@ -24,7 +26,7 @@ from peyote.font_ttf import available_fonts, resolve_font, DEFAULT_FONT_NAME
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
                  font_mode, rotate, margin,
                  bg_color, text_color, accent1_color, accent2_color,
-                 font_path=None, gap=2):
+                 font_path=None, gap=2, repeat=None):
     """Build fabric grid and palette from current settings."""
     # Config
     if preset != 'custom':
@@ -45,6 +47,8 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
         palette = ColorPalette.four_color(bg_color, text_color,
                                           accent1_color, accent2_color)
 
+    repeat_kwargs = pattern_repeat_kwargs(pattern_name, repeat)
+
     # Fabric
     if layout == 'Text Only':
         fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
@@ -56,16 +60,18 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
             border_pattern=pattern_name,
             font_mode=font_mode, font_path=font_path, rotate=rotate,
             margin=margin, gap=gap,
-            wrap_border=(layout == 'Text + Border Wrap'))
+            wrap_border=(layout == 'Text + Border Wrap'),
+            **repeat_kwargs)
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
             text or 'HELLO', config,
             background_pattern=pattern_name,
-            font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin)
+            font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin,
+            **repeat_kwargs)
         title = text or 'Pattern'
     elif layout == 'Pattern Only':
-        fabric = compose_pattern_only(pattern_name, config)
+        fabric = compose_pattern_only(pattern_name, config, **repeat_kwargs)
         title = f'{pattern_name} pattern'
     else:
         fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
@@ -103,6 +109,7 @@ def create_ui():
         'pattern': 'chevron',
         'margin': 0,
         'gap': 2,
+        'repeat': 8,  # beads between pattern repeats; inert when pattern has no period
         'font_mode': 'auto',  # kept for build_fabric compat
         'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
@@ -123,7 +130,7 @@ def create_ui():
                 state['bg_color'], state['text_color'],
                 state['accent1_color'], state['accent2_color'],
                 font_path=resolve_font(state['font_name']),
-                gap=state['gap'])
+                gap=state['gap'], repeat=state['repeat'])
 
             # Fabric preview — send SVG directly to browser (browser renders natively,
             # avoiding the cairosvg→PNG roundtrip that dominates render time).
@@ -299,14 +306,21 @@ def create_ui():
                           update_preview(),
                       ))
 
+            def on_pattern_change(new_name):
+                state['pattern'] = new_name
+                # Snap Repeat back to the new pattern's natural default so
+                # users never inherit a stale value from the previous pick.
+                new_default = pattern_repeat_default(new_name)
+                if new_default is not None:
+                    state['repeat'] = new_default
+                    repeat_input.set_value(new_default)
+                update_preview()
+
             with ui.row().classes('w-full gap-2 no-wrap'):
                 pattern_select = ui.select(
                     list(PATTERN_CATALOG.keys()),
                     value=state['pattern'], label='Pattern',
-                    on_change=lambda e: (
-                        state.update({'pattern': e.value}),
-                        update_preview(),
-                    )
+                    on_change=lambda e: on_pattern_change(e.value),
                 ).props('outlined dense').classes('flex-1')
 
                 ui.number('Gap', value=state['gap'],
@@ -314,7 +328,15 @@ def create_ui():
                           on_change=lambda e: (
                               state.update({'gap': int(e.value) if e.value is not None else 2}),
                               update_preview(),
-                          )).props('outlined dense').style('width: 90px;')
+                          )).props('outlined dense').style('width: 80px;')
+
+                repeat_input = ui.number('Repeat', value=state['repeat'],
+                          min=1, max=100,
+                          on_change=lambda e: (
+                              state.update({'repeat': int(e.value) if e.value is not None else 8}),
+                              update_preview(),
+                          ))
+                repeat_input.props('outlined dense').style('width: 90px;')
 
             # Colors
             ui.label('Colors').classes('text-subtitle1 font-bold mt-4')
