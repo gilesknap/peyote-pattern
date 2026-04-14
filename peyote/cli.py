@@ -104,13 +104,17 @@ def main():
         rows = args.rows or 72
         config = BeadConfig(columns=columns, rows=rows)
 
-    # Build palette
+    # Build palette — pad to 4 slots (bg, text/accent1, accent2, accent3) so
+    # pattern indices in Text+Border and pattern-with-text layouts always
+    # resolve to a concrete color instead of the renderer's gray fallback.
     if args.palette:
-        palette = get_palette(args.palette)
+        base_pairs = list(PALETTE_DEFS[args.palette])
     else:
-        palette = ColorPalette.two_color(
-            args.bg_color, args.fg_color,
-            args.bg_name, args.fg_name)
+        base_pairs = [(args.bg_color, args.bg_name),
+                      (args.fg_color, args.fg_name)]
+    while len(base_pairs) < 4:
+        base_pairs.append(base_pairs[-1])
+    palette = ColorPalette.from_pairs(base_pairs)
 
     rotate = args.orientation == 'sideways'
 

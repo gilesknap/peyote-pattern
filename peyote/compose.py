@@ -100,12 +100,12 @@ def compose_text_with_border(
         # four sides. Paint top/bottom bands + left/right margin strips.
         full_kwargs = {'columns': config.columns, 'rows': config.rows}
         full_kwargs.update(pattern_kwargs or {})
-        full_pat = pat_fn(**full_kwargs)
+        full_pat = _shift_pattern_to_accents(pat_fn(**full_kwargs))
 
         def _stamp(ri: int, ci: int) -> None:
             v = full_pat[ri][ci]
             if v:
-                result[ri][ci] = border_color
+                result[ri][ci] = v
 
         # Top band
         for ri in range(min(border_rows, config.rows)):
@@ -130,21 +130,31 @@ def compose_text_with_border(
         # painted at top and bottom only.
         kwargs = {'columns': config.columns, 'rows': border_rows}
         kwargs.update(pattern_kwargs or {})
-        border_grid = pat_fn(**kwargs)
+        border_grid = _shift_pattern_to_accents(pat_fn(**kwargs))
 
         # Top border — starts at row 0
         for i, brow in enumerate(border_grid):
             if i >= config.rows:
                 break
-            result[i] = [border_color if v else 0 for v in brow]
+            result[i] = list(brow)
 
         # Bottom border — ends at last row
         for i, brow in enumerate(border_grid):
             ri = config.rows - border_rows + i
             if 0 <= ri < config.rows:
-                result[ri] = [border_color if v else 0 for v in brow]
+                result[ri] = list(brow)
 
     return result
+
+
+def _shift_pattern_to_accents(grid: list[list[int]]) -> list[list[int]]:
+    """Remap pattern ON-beads from slots {1,2} into accent slots {2,3}.
+
+    Patterns emit color indices 1 (single-color) or 1 and 2 (two-color).
+    Slot 1 is reserved for text, so we shift every non-zero index up by one
+    to land on Accent 1 (slot 2) and Accent 2 (slot 3).
+    """
+    return [[0 if v == 0 else v + 1 for v in row] for row in grid]
 
 
 def compose_text_with_background(
@@ -155,16 +165,13 @@ def compose_text_with_background(
     font_path: str | None = None,
     rotate: bool = True,
     margin: int = 0,
-    background_color: int = 2,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text overlaid on a decorative background.
 
-    Single-color patterns (0/1 only) are remapped to *background_color* so
-    they don't collide with the text's Accent 1 slot. Multi-color patterns
-    (those that already use index 2 or higher) are left as-is so their
-    palette intent is preserved. Text pixels overwrite the background where
-    they collide.
+    Pattern indices are shifted into the accent slots (2/3) so they stay
+    independent from the text color (slot 1). Text pixels overwrite the
+    background where they collide.
     """
     pat_fn = PATTERN_CATALOG.get(background_pattern)
     if pat_fn is None:
@@ -172,13 +179,7 @@ def compose_text_with_background(
 
     kwargs = {'columns': config.columns, 'rows': config.rows}
     kwargs.update(pattern_kwargs or {})
-    bg = pat_fn(**kwargs)
-
-    max_val = max((v for row in bg for v in row), default=0)
-    if max_val <= 1:
-        # Single-color pattern — push ON-bits into the Accent 2 slot
-        bg = [[background_color if v else 0 for v in row] for row in bg]
-    # else: multi-color pattern already uses indices 1..N — leave alone
+    bg = _shift_pattern_to_accents(pat_fn(**kwargs))
 
     text_grid = text_to_fabric(
         text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
@@ -193,7 +194,11 @@ def compose_pattern_only(
     config: BeadConfig,
     **pattern_kwargs,
 ) -> list[list[int]]:
-    """Full-grid decorative pattern with no text."""
+    """Full-grid decorative pattern with no text.
+
+    Keeps native pattern indices (0/1 for single-color, 0/1/2 for two-color)
+    so the paired palette should place accents on slots 1 and 2.
+    """
     pat_fn = PATTERN_CATALOG.get(pattern_name)
     if pat_fn is None:
         raise ValueError(f"Unknown pattern '{pattern_name}'")

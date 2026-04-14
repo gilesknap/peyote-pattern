@@ -7,7 +7,7 @@ import base64
 from nicegui import ui, app
 
 from peyote.sizing import BeadConfig, PRESETS
-from peyote.colors import ColorPalette, PALETTE_DEFS
+from peyote.colors import ColorPalette, PALETTE_DEFS, darken
 from peyote.font import text_to_fabric
 from peyote.patterns import PATTERN_CATALOG
 from peyote.compose import (
@@ -23,7 +23,7 @@ from peyote.font_ttf import available_fonts, resolve_font, DEFAULT_FONT_NAME
 
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
                  font_mode, rotate, margin,
-                 bg_color, fg_color, border_color,
+                 bg_color, text_color, accent1_color, accent2_color,
                  font_path=None, gap=2):
     """Build fabric grid and palette from current settings."""
     # Config
@@ -33,12 +33,17 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
     else:
         config = BeadConfig(columns=columns, rows=rows)
 
-    # Palette — everything except pure Text Only benefits from the 3rd slot
-    # (borders, pattern backgrounds, or 2-color decorative patterns).
+    # Palette slot layout depends on whether text is present:
+    #   Text Only               → bg, text
+    #   Pattern Only            → bg, accent1, accent2  (patterns emit 1/2 natively)
+    #   Text + Border/Background → bg, text, accent1, accent2 (patterns shifted to 2/3)
     if layout == 'Text Only':
-        palette = ColorPalette.two_color(bg_color, fg_color)
+        palette = ColorPalette.two_color(bg_color, text_color, fg_name='Text')
+    elif layout == 'Pattern Only':
+        palette = ColorPalette.three_color(bg_color, accent1_color, accent2_color)
     else:
-        palette = ColorPalette.three_color(bg_color, fg_color, border_color)
+        palette = ColorPalette.four_color(bg_color, text_color,
+                                          accent1_color, accent2_color)
 
     # Fabric
     if layout == 'Text Only':
@@ -103,8 +108,9 @@ def create_ui():
         'rotate': True,
         'palette_name': 'classic',
         'bg_color': '#E8A0A8',
-        'fg_color': '#C82020',
-        'border_color': '#8B4513',
+        'text_color': '#C82020',
+        'accent1_color': '#8B4513',
+        'accent2_color': '#53290b',
         'zoom': 300,  # px max-width per image
     }
 
@@ -114,7 +120,8 @@ def create_ui():
                 state['text'], state['preset'], state['columns'], state['rows'],
                 state['layout'], state['pattern'],
                 state['font_mode'], state['rotate'], state['margin'],
-                state['bg_color'], state['fg_color'], state['border_color'],
+                state['bg_color'], state['text_color'],
+                state['accent1_color'], state['accent2_color'],
                 font_path=resolve_font(state['font_name']),
                 gap=state['gap'])
 
@@ -315,12 +322,19 @@ def create_ui():
             def apply_palette(name):
                 colors = PALETTE_DEFS[name]
                 state['bg_color'] = colors[0][0]
-                state['fg_color'] = colors[1][0]
-                if len(colors) > 2:
-                    state['border_color'] = colors[2][0]
+                state['text_color'] = colors[1][0]
+                # Accent 1 picks up the 3rd palette color when available, so
+                # it stays distinct from Text. Accent 2 is synthesised as a
+                # darkened shade of Accent 1 — the built-in palettes only
+                # ship 2-3 colors, so we generate a 4th to keep each picker
+                # on a unique color.
+                accent1 = colors[2][0] if len(colors) > 2 else colors[1][0]
+                state['accent1_color'] = accent1
+                state['accent2_color'] = darken(accent1, factor=0.6)
                 bg_picker.set_value(state['bg_color'])
-                fg_picker.set_value(state['fg_color'])
-                border_picker.set_value(state['border_color'])
+                text_picker.set_value(state['text_color'])
+                accent1_picker.set_value(state['accent1_color'])
+                accent2_picker.set_value(state['accent2_color'])
                 update_preview()
 
             ui.select(
@@ -334,16 +348,21 @@ def create_ui():
                                            state.update({'bg_color': e.value}),
                                            update_preview(),
                                        )).props('outlined dense').classes('w-full')
-            fg_picker = ui.color_input('Accent 1', value=state['fg_color'],
-                                       on_change=lambda e: (
-                                           state.update({'fg_color': e.value}),
-                                           update_preview(),
-                                       )).props('outlined dense').classes('w-full')
-            border_picker = ui.color_input('Accent 2', value=state['border_color'],
-                                           on_change=lambda e: (
-                                               state.update({'border_color': e.value}),
-                                               update_preview(),
-                                           )).props('outlined dense').classes('w-full')
+            text_picker = ui.color_input('Text', value=state['text_color'],
+                                         on_change=lambda e: (
+                                             state.update({'text_color': e.value}),
+                                             update_preview(),
+                                         )).props('outlined dense').classes('w-full')
+            accent1_picker = ui.color_input('Accent 1', value=state['accent1_color'],
+                                            on_change=lambda e: (
+                                                state.update({'accent1_color': e.value}),
+                                                update_preview(),
+                                            )).props('outlined dense').classes('w-full')
+            accent2_picker = ui.color_input('Accent 2', value=state['accent2_color'],
+                                            on_change=lambda e: (
+                                                state.update({'accent2_color': e.value}),
+                                                update_preview(),
+                                            )).props('outlined dense').classes('w-full')
 
             # Bead Count
             ui.label('Bead Count').classes('text-subtitle1 font-bold mt-4')

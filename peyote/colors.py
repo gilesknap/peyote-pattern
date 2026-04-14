@@ -51,6 +51,19 @@ class ColorPalette:
         """Background + two accent colors (text uses Accent 1, patterns can use both)."""
         return cls.from_pairs([(bg, bg_name), (accent1, accent1_name), (accent2, accent2_name)])
 
+    @classmethod
+    def four_color(cls, bg: str, text: str, accent1: str, accent2: str,
+                   bg_name: str = 'Background', text_name: str = 'Text',
+                   accent1_name: str = 'Accent 1',
+                   accent2_name: str = 'Accent 2') -> 'ColorPalette':
+        """Background + text + two accent colors.
+
+        Slot layout: 0=bg, 1=text, 2=accent1, 3=accent2. Text uses slot 1; patterns
+        use slots 2/3 so pattern colors stay independent from text color.
+        """
+        return cls.from_pairs([(bg, bg_name), (text, text_name),
+                               (accent1, accent1_name), (accent2, accent2_name)])
+
     def label(self, index: int) -> str:
         """Short label for a color index (A, B, C, ...)."""
         return chr(ord('A') + index)
