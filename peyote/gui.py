@@ -432,7 +432,41 @@ def create_ui():
         hit = ed.hit_test(e.image_x, e.image_y, es.fabric, es.config)
         etype = e.type
 
+        # Floating-buffer mode (paste-positioning or drag-move) takes priority.
+        if es.floating is not None:
+            if etype == 'mousemove':
+                if hit is None:
+                    return
+                dr, dc = es.floating_anchor
+                new_origin = (hit[0] - dr, hit[1] - dc)
+                if new_origin != es.floating_origin:
+                    es.floating_origin = new_origin
+                    refresh_fabric_from_editor()
+            elif etype == 'mousedown':
+                # Paste mode (no source lifted): click commits at cursor.
+                if not es.floating_lifted:
+                    if hit:
+                        ed.set_floating_origin_from_hit(es, hit)
+                    ed.commit_floating(es)
+                    refresh_fabric_from_editor()
+            elif etype == 'mouseup':
+                # Drag-move mode: mouseup commits at cursor.
+                if es.floating_lifted:
+                    if hit:
+                        ed.set_floating_origin_from_hit(es, hit)
+                    ed.commit_floating(es)
+                    refresh_fabric_from_editor()
+            return
+
         if etype == 'mousedown':
+            # Click inside an existing selection with the Select tool lifts
+            # the selection into a floating buffer for drag-move.
+            if (es.tool == 'select' and es.selection is not None
+                    and hit is not None
+                    and ed.click_in_selection(es.selection, hit)):
+                if ed.lift_selection_for_drag(es, hit):
+                    refresh_fabric_from_editor()
+                    return
             es.drag = ed.DragState(tool=es.tool,
                                    start_cell=hit, last_cell=hit,
                                    color=es.active_color)
@@ -521,6 +555,33 @@ def create_ui():
 
     with ui.header().classes('bg-primary'):
         ui.label('Peyote Pattern Designer').classes('text-h5 text-white')
+
+    def on_key(e):
+        # Only act on keydown while floating in the editor.
+        if not e.action.keydown:
+            return
+        if state['mode'] != 'editor':
+            return
+        es = state['editor']
+        if es is None or es.floating is None:
+            return
+        if e.key.escape:
+            ed.cancel_floating(es)
+        elif e.key.enter:
+            ed.commit_floating(es)
+        elif e.key.arrow_left:
+            ed.nudge_floating(es, 0, -2)
+        elif e.key.arrow_right:
+            ed.nudge_floating(es, 0, 2)
+        elif e.key.arrow_up:
+            ed.nudge_floating(es, -1, 0)
+        elif e.key.arrow_down:
+            ed.nudge_floating(es, 1, 0)
+        else:
+            return
+        refresh_fabric_from_editor()
+
+    ui.keyboard(on_key=on_key)
 
     with ui.row().classes('w-full flex-wrap'):
         with ui.column().classes('p-4 gap-2').style(
@@ -823,12 +884,15 @@ def create_ui():
 
             def do_paste():
                 es = state['editor']
-                if es is None or es.clipboard is None:
+                if es is None:
                     return
-                origin = es.clipboard_origin or (0, 0)
-                ed.push_history(es)
-                ed.paste_at(es.fabric, es.config, es.clipboard, *origin)
+                if not ed.start_paste(es):
+                    return
                 refresh_fabric_from_editor()
+                ui.notify(
+                    'Move with mouse or arrows; click or Enter to drop, Esc to cancel.',
+                    type='info', position='bottom', timeout=3000,
+                )
 
             def do_clear():
                 es = state['editor']

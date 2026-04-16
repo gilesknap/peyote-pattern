@@ -41,6 +41,14 @@ class EditorState:
     selection: tuple[int, int, int, int] | None = None
     recent_colors: list[int] = field(default_factory=list)
     drag: DragState | None = None
+    # Floating buffer — active during paste-positioning or drag-move.
+    # `floating_anchor` is the (dr, dc) inside the buffer that tracks the cursor.
+    # `floating_lifted` is True when the buffer was cut from the fabric (drag-move),
+    # so cancel must restore the source. False for plain paste.
+    floating: list[list[int | None]] | None = None
+    floating_origin: tuple[int, int] | None = None
+    floating_anchor: tuple[int, int] = (0, 0)
+    floating_lifted: bool = False
 
 
 # ─── Coordinate helpers ────────────────────────────────────────────────
@@ -285,6 +293,113 @@ def paste_at(fabric: list[list[int]], config: BeadConfig,
                 fabric[tr][tc] = val
 
 
+def click_in_selection(sel: tuple[int, int, int, int],
+                       hit: tuple[int, int]) -> bool:
+    r0, r1 = sorted((sel[0], sel[2]))
+    c0, c1 = sorted((sel[1], sel[3]))
+    ri, fc = hit
+    return r0 <= ri <= r1 and c0 <= fc <= c1
+
+
+def start_paste(state: EditorState) -> bool:
+    """Begin floating-paste mode at the remembered clipboard origin.
+
+    Returns False if the clipboard is empty.
+    """
+    if state.clipboard is None:
+        return False
+    state.floating = [row[:] for row in state.clipboard]
+    state.floating_origin = state.clipboard_origin or (0, 0)
+    state.floating_anchor = (0, 0)
+    state.floating_lifted = False
+    state.selection = None
+    return True
+
+
+def lift_selection_for_drag(state: EditorState,
+                            click: tuple[int, int]) -> bool:
+    """Lift the current selection into the floating buffer for drag-positioning.
+
+    The clicked cell becomes the anchor (stays under the cursor). Pushes
+    history so a cancel can roll back the source clear cleanly.
+    """
+    if state.selection is None:
+        return False
+    if not click_in_selection(state.selection, click):
+        return False
+    sel = state.selection
+    r0, r1 = sorted((sel[0], sel[2]))
+    c0, c1 = sorted((sel[1], sel[3]))
+    ri, fc = click
+
+    push_history(state)
+    buf = get_selection(state.fabric, state.config, sel)
+    state.floating = buf
+    state.floating_origin = (r0, c0)
+    state.floating_anchor = (ri - r0, fc - c0)
+    state.floating_lifted = True
+    state.selection = None
+    state.clipboard = [row[:] for row in buf]
+    state.clipboard_origin = (r0, c0)
+
+    nrows = len(state.fabric)
+    ncols = state.config.columns
+    for r in range(r0, r1 + 1):
+        if not (0 <= r < nrows):
+            continue
+        active = set(state.config.cols_for_row(r))
+        for c in range(c0, c1 + 1):
+            if c in active and 0 <= c < ncols:
+                state.fabric[r][c] = 0
+    return True
+
+
+def commit_floating(state: EditorState) -> None:
+    """Write the floating buffer to fabric at floating_origin and exit float mode."""
+    if state.floating is None or state.floating_origin is None:
+        return
+    if not state.floating_lifted:
+        push_history(state)
+    paste_at(state.fabric, state.config, state.floating, *state.floating_origin)
+    state.clipboard_origin = state.floating_origin
+    state.floating = None
+    state.floating_origin = None
+    state.floating_anchor = (0, 0)
+    state.floating_lifted = False
+
+
+def cancel_floating(state: EditorState) -> None:
+    """Drop the floating buffer; if lifted from a drag, restore the source."""
+    if state.floating is None:
+        return
+    if state.floating_lifted:
+        # Lift pushed history; undo restores the source. Then drop the redo
+        # entry so the user doesn't see a phantom "redo lift" they never did.
+        undo(state)
+        if state.redo_stack:
+            state.redo_stack.pop()
+    state.floating = None
+    state.floating_origin = None
+    state.floating_anchor = (0, 0)
+    state.floating_lifted = False
+
+
+def nudge_floating(state: EditorState, dri: int, dfc: int) -> None:
+    if state.floating_origin is None:
+        return
+    r, c = state.floating_origin
+    state.floating_origin = (r + dri, c + dfc)
+
+
+def set_floating_origin_from_hit(state: EditorState,
+                                 hit: tuple[int, int]) -> None:
+    """Position the floating buffer so its anchor cell sits under `hit`."""
+    if state.floating is None:
+        return
+    dr, dc = state.floating_anchor
+    state.floating_origin = (hit[0] - dr, hit[1] - dc)
+
+
 def cut(state: EditorState) -> None:
     """Copy selection to clipboard then clear to background (index 0)."""
     if state.selection is None:
@@ -426,6 +541,44 @@ def make_overlay_svg(state: EditorState, config: BeadConfig) -> str:
             f'height="{y1 + bh - y0:.1f}" fill="none" stroke="#d32f2f" '
             f'stroke-width="2" stroke-dasharray="6 4"/>'
         )
+
+    if state.floating is not None and state.floating_origin is not None:
+        o_ri, o_fc = state.floating_origin
+        nrows = len(state.fabric)
+        bw, bh = config.bead_width, config.bead_height
+        slot = config.slot
+        for dr, row in enumerate(state.floating):
+            tr = o_ri + dr
+            if not (0 <= tr < nrows):
+                continue
+            active = set(config.cols_for_row(tr))
+            for dc, val in enumerate(row):
+                if val is None:
+                    continue
+                tfc = o_fc + dc
+                if tfc not in active:
+                    continue
+                color = state.palette.colors.get(val, '#cccccc')
+                cx, cy = bead_center(tr, tfc, config)
+                frags.append(
+                    f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
+                    f'rx="{bw / 2:.1f}" ry="{bh / 2:.1f}" '
+                    f'fill="{color}" fill-opacity="0.85" '
+                    f'stroke="#1976d2" stroke-width="0.6"/>'
+                )
+        nrows_buf = len(state.floating)
+        ncols_buf = max((len(r) for r in state.floating), default=0)
+        if nrows_buf and ncols_buf:
+            x0 = PL + o_fc * slot
+            y0 = PT + o_ri * bh / 2
+            x1 = PL + (o_fc + ncols_buf - 1) * slot + bw
+            y1 = PT + (o_ri + nrows_buf - 1) * bh / 2 + bh
+            frags.append(
+                f'<rect x="{x0:.1f}" y="{y0:.1f}" '
+                f'width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" '
+                f'fill="none" stroke="#1976d2" stroke-width="2" '
+                f'stroke-dasharray="6 4"/>'
+            )
     return "".join(frags)
 
 
