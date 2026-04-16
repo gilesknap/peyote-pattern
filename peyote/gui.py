@@ -111,7 +111,7 @@ def create_ui():
         'pattern': 'scales',
         'margin': 16,
         'gap': 2,
-        'repeat': 10,  # argyle default; inert when pattern has no period
+        'repeat': 12,  # inert when pattern has no period
         'font_mode': 'auto',  # kept for build_fabric compat
         'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
