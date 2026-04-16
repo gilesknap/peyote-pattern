@@ -144,6 +144,7 @@ def create_ui():
         'accent1_color': '#FF6F00',
         'accent2_color': '#994200',
         'zoom': 300,  # px max-width per image
+        'editor_zoom': 600,     # px width for the editor canvas (2× procedural default)
         'mode': 'procedural',   # or 'editor'
         'editor': None,         # ed.EditorState when in editor mode
         'custom': False,        # True once editor edits have been kept
@@ -238,6 +239,8 @@ def create_ui():
         )
         state['editor'] = es
         state['mode'] = 'editor'
+        state['editor_zoom'] = max(200, min(2000, state['zoom'] * 2))
+        fabric_container.style(f'width: {state["editor_zoom"]}px;')
         procedural_panel.set_visibility(False)
         editor_panel.set_visibility(True)
         pattern_container.set_visibility(False)
@@ -250,6 +253,7 @@ def create_ui():
         procedural_panel.set_visibility(True)
         editor_panel.set_visibility(False)
         pattern_container.set_visibility(True)
+        fabric_container.style(f'width: {state["zoom"]}px;')
         fabric_img.content = ''
 
     def done_editor():
@@ -720,7 +724,19 @@ def create_ui():
                 refresh_fabric_from_editor()
                 ui.notify('Loaded pattern', type='positive')
 
+            editor_zoom_slider = None
+
+            def set_editor_zoom(v):
+                v = max(200, min(2000, int(v)))
+                if v == state['editor_zoom']:
+                    return
+                state['editor_zoom'] = v
+                fabric_container.style(f'width: {v}px;')
+                if editor_zoom_slider is not None:
+                    editor_zoom_slider.value = v
+
             def build_editor_panel():
+                nonlocal editor_zoom_slider
                 editor_panel.clear()
                 es = state['editor']
                 if es is None:
@@ -816,6 +832,27 @@ def create_ui():
                         on_upload=on_upload,
                         auto_upload=True,
                     ).props('accept=.json flat dense').classes('w-full')
+
+                    # Zoom
+                    ui.label('Zoom').classes('text-subtitle1 font-bold mt-4')
+                    with ui.row().classes('w-full items-center gap-1 no-wrap').style(
+                        'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
+                        'padding: 4px 8px;'
+                    ):
+                        ui.button(icon='remove',
+                                  on_click=lambda: set_editor_zoom(state['editor_zoom'] - 100)
+                                  ).props('flat dense round size=sm')
+                        editor_zoom_slider = ui.slider(
+                            min=200, max=2000, step=100,
+                            value=state['editor_zoom'],
+                            on_change=lambda e: set_editor_zoom(e.value),
+                        ).props('label').classes('flex-1')
+                        ui.button(icon='add',
+                                  on_click=lambda: set_editor_zoom(state['editor_zoom'] + 100)
+                                  ).props('flat dense round size=sm')
+                        ui.button(icon='refresh',
+                                  on_click=lambda: set_editor_zoom(state['zoom'] * 2)
+                                  ).props('flat dense round size=sm')
 
         with ui.column().classes('p-4 gap-2 items-start').style(
             'min-width: 300px; flex: 1 1 0%;'
