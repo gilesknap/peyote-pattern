@@ -52,12 +52,12 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
 
     # Fabric
     if layout == 'Text Only':
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
+        fabric = text_to_fabric(text or 'TASH', config, font_mode=font_mode,
                                 font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout in ('Text + Border', 'Text + Border Wrap'):
         fabric = compose_text_with_border(
-            text or 'HELLO', config,
+            text or 'TASH', config,
             border_pattern=pattern_name,
             font_mode=font_mode, font_path=font_path, rotate=rotate,
             margin=margin, gap=gap,
@@ -66,7 +66,7 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
-            text or 'HELLO', config,
+            text or 'TASH', config,
             background_pattern=pattern_name,
             font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin,
             **repeat_kwargs)
@@ -75,7 +75,7 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
         fabric = compose_pattern_only(pattern_name, config, **repeat_kwargs)
         title = f'{pattern_name} pattern'
     else:
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
+        fabric = text_to_fabric(text or 'TASH', config, font_mode=font_mode,
                                 font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
 
@@ -103,13 +103,13 @@ def render_svg(fabric, title, config, palette, view='fabric') -> str:
 def create_ui():
     # State defaults
     state = {
-        'text': 'HELLO',
-        'preset': 'bookmark',
-        'columns': 20,
-        'rows': 200,
+        'text': 'TASH',
+        'preset': 'wide-bracelet',
+        'columns': 50,
+        'rows': 150,
         'layout': 'Text + Border Wrap',
-        'pattern': 'argyle',
-        'margin': 0,
+        'pattern': 'scales',
+        'margin': 16,
         'gap': 2,
         'repeat': 10,  # argyle default; inert when pattern has no period
         'font_mode': 'auto',  # kept for build_fabric compat
