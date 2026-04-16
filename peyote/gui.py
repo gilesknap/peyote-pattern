@@ -4,6 +4,7 @@ import base64
 import copy
 import io
 import json as json_mod
+from pathlib import Path
 
 from nicegui import ui
 
@@ -147,6 +148,8 @@ def create_ui():
         'editor_zoom': 600,     # px width for the editor canvas (2× procedural default)
         'mode': 'procedural',   # or 'editor'
         'editor': None,         # ed.EditorState when in editor mode
+        'save_filename': None,  # full path; set after first save, reused on subsequent saves
+        'save_folder': None,    # last folder chosen in the save dialog
         'custom': False,        # True once editor edits have been kept
         '_syncing': False,      # guards cascading set_value() -> on_change loops
     }
@@ -239,6 +242,7 @@ def create_ui():
         )
         state['editor'] = es
         state['mode'] = 'editor'
+        state['save_filename'] = None
         state['editor_zoom'] = max(200, min(2000, state['zoom'] * 2))
         fabric_container.style(f'width: {state["editor_zoom"]}px;')
         edit_button.set_visibility(False)
@@ -277,6 +281,134 @@ def create_ui():
     def discard_editor():
         exit_to_procedural()
         update_preview()
+
+    def has_editor_changes() -> bool:
+        es = state['editor']
+        if es is None:
+            return False
+        if es.fabric != es.snapshot:
+            return True
+        return es.palette.colors != es.snapshot_palette.colors
+
+    def _default_save_folder() -> Path:
+        if state.get('save_folder'):
+            return Path(state['save_folder']).expanduser()
+        downloads = Path.home() / 'Downloads'
+        return downloads if downloads.is_dir() else Path.home()
+
+    def _resolve_save_path(folder: str, name: str) -> Path:
+        name = name.strip()
+        if not name.lower().endswith('.json'):
+            name += '.json'
+        base = Path(folder).expanduser() if folder.strip() else _default_save_folder()
+        return (base / name).expanduser().resolve()
+
+    def _write_editor_json(path: Path) -> None:
+        es = state['editor']
+        if es is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(ed.fabric_to_json(es), encoding='utf-8')
+        except OSError as err:
+            ui.notify(f'Save failed: {err}', type='negative')
+            return
+        ui.notify(f'Saved {path}', type='positive')
+
+    def _confirm_overwrite_then(path: Path, on_confirm) -> None:
+        if not path.exists():
+            on_confirm()
+            return
+        with ui.dialog() as dlg, ui.card():
+            ui.label(f'{path} already exists.').classes('text-subtitle1')
+            ui.label('Overwrite?').classes('text-body2')
+            with ui.row().classes('w-full justify-end gap-2'):
+                ui.button('Cancel', on_click=dlg.close).props('flat')
+
+                def yes():
+                    dlg.close()
+                    on_confirm()
+
+                ui.button('Overwrite', on_click=yes).props('color=negative')
+        dlg.open()
+
+    def prompt_save_filename(after_save) -> None:
+        """Ask for folder + filename, write JSON (with overwrite confirm), then call after_save()."""
+        es = state['editor']
+        default_name = (es.title if es and es.title else 'peyote-pattern')
+        # Pre-populate from the last save when re-prompting, else default folder.
+        if state.get('save_filename'):
+            prev = Path(state['save_filename'])
+            default_folder = str(prev.parent)
+            default_name = prev.stem
+        else:
+            default_folder = str(_default_save_folder())
+        with ui.dialog() as dlg, ui.card():
+            ui.label('Save pattern as').classes('text-subtitle1')
+            folder_input = ui.input(label='Folder', value=default_folder).props(
+                'outlined dense').classes('w-full').style('min-width: 360px;')
+            name_input = ui.input(label='Filename', value=default_name).props(
+                'outlined dense').classes('w-full')
+            with ui.row().classes('w-full justify-end gap-2'):
+                ui.button('Cancel', on_click=dlg.close).props('flat')
+
+                def confirm():
+                    name = (name_input.value or default_name).strip()
+                    if not name:
+                        return
+                    folder = folder_input.value or ''
+                    path = _resolve_save_path(folder, name)
+                    dlg.close()
+
+                    def do_save():
+                        state['save_filename'] = str(path)
+                        state['save_folder'] = str(path.parent)
+                        _write_editor_json(path)
+                        after_save()
+
+                    _confirm_overwrite_then(path, do_save)
+
+                ui.button('Save', on_click=confirm).props('color=primary')
+        dlg.open()
+
+    def save_editor_json(after_save=lambda: None) -> None:
+        """Write JSON using the remembered path, or prompt on first save."""
+        name = state.get('save_filename')
+        if not name:
+            prompt_save_filename(after_save)
+            return
+        path = Path(name)
+
+        def do_save():
+            _write_editor_json(path)
+            after_save()
+
+        _confirm_overwrite_then(path, do_save)
+
+    def request_close_editor():
+        if not has_editor_changes():
+            discard_editor()
+            return
+        with ui.dialog() as dlg, ui.card():
+            ui.label('You have unsaved changes.').classes('text-subtitle1')
+            with ui.row().classes('w-full justify-end gap-2'):
+                ui.button('Cancel', on_click=dlg.close).props('flat')
+                ui.button(
+                    'Discard',
+                    on_click=lambda: (dlg.close(), discard_editor()),
+                ).props('flat color=negative')
+
+                def save_and_close():
+                    dlg.close()
+                    save_editor_json(done_editor)
+
+                def save_as_and_close():
+                    dlg.close()
+                    prompt_save_filename(done_editor)
+
+                ui.button('Save As', on_click=save_as_and_close).props('flat')
+                ui.button('Save', on_click=save_and_close).props('color=primary')
+        dlg.open()
 
     # ── Editor mouse handler ──────────────────────────────────────────
     def on_fabric_mouse(e):
@@ -695,15 +827,13 @@ def create_ui():
                 refresh_fabric_from_editor()
 
             def do_save_json():
-                es = state['editor']
-                if es is None:
+                if state['editor'] is None:
                     return
-                ui.download(ed.fabric_to_json(es).encode('utf-8'),
-                            'peyote-pattern.json')
+                save_editor_json()
 
-            def on_upload(e):
+            async def on_upload(e):
                 try:
-                    text = e.content.read().decode('utf-8')
+                    text = await e.file.text()
                     fabric, config, palette, title = ed.fabric_from_json(text)
                 except Exception as err:
                     ui.notify(f'Load failed: {err}', type='negative')
@@ -722,6 +852,7 @@ def create_ui():
                 es.selection = None
                 es.drag = None
                 state['_config'] = config
+                state['save_filename'] = None
                 build_editor_panel()
                 refresh_fabric_from_editor()
                 ui.notify('Loaded pattern', type='positive')
@@ -746,10 +877,8 @@ def create_ui():
                 with editor_panel:
                     with ui.row().classes('w-full items-center gap-2'):
                         ui.label('Editor').classes('text-subtitle1 font-bold flex-1')
-                        ui.button('Done', icon='check',
-                                  on_click=done_editor).props('flat dense color=primary')
-                        ui.button('Discard', icon='close',
-                                  on_click=discard_editor).props('flat dense color=negative')
+                        ui.button('Close', icon='close',
+                                  on_click=request_close_editor).props('flat dense')
 
                     # Tools
                     ui.label('Tools').classes('text-caption text-grey-7 mt-2')
