@@ -118,7 +118,9 @@ def compose_text_with_border(
         # Side strips: outer (margin - gap) columns on each side so the
         # border stays `gap` beads clear of the text horizontally, matching
         # the vertical gap above/below. Vanishes when margin <= gap.
-        side_width = max(0, margin - gap)
+        # Clamp to half-width so the two sides never overlap or exceed
+        # the grid (possible on narrow presets where margin >= columns/2).
+        side_width = max(0, min(margin - gap, config.columns // 2))
         if side_width > 0:
             side_cols = list(range(side_width)) + \
                 list(range(config.columns - side_width, config.columns))

@@ -47,7 +47,7 @@ class BeadConfig:
 PRESETS: dict[str, BeadConfig] = {
     'ring':           BeadConfig(columns=10, rows=72),
     'wide-ring':      BeadConfig(columns=20, rows=72),
-    'bracelet':       BeadConfig(columns=40, rows=120),
-    'wide-bracelet':  BeadConfig(columns=50, rows=150),
+    'bracelet':       BeadConfig(columns=40, rows=180),
+    'wide-bracelet':  BeadConfig(columns=50, rows=200),
     'bookmark':       BeadConfig(columns=20, rows=200),
 }

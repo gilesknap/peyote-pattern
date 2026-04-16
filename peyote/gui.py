@@ -122,11 +122,13 @@ def _svg_data_url(svg: str) -> str:
 @ui.page('/')
 def create_ui():
     # State defaults
+    _default_preset = 'wide-bracelet'
+    _default_preset_config = PRESETS[_default_preset]
     state = {
         'text': 'TASH',
-        'preset': 'wide-bracelet',
-        'columns': 50,
-        'rows': 150,
+        'preset': _default_preset,
+        'columns': _default_preset_config.columns,
+        'rows': _default_preset_config.rows,
         'layout': 'Text + Border Wrap',
         'pattern': 'scales',
         'margin': 16,
@@ -145,6 +147,7 @@ def create_ui():
         'mode': 'procedural',   # or 'editor'
         'editor': None,         # ed.EditorState when in editor mode
         'custom': False,        # True once editor edits have been kept
+        '_syncing': False,      # guards cascading set_value() -> on_change loops
     }
 
     def update_preview():
@@ -383,38 +386,68 @@ def create_ui():
             with procedural_panel:
                 # Size
                 ui.label('Size').classes('text-subtitle1 font-bold')
+                def on_preset_change(value):
+                    state['preset'] = value
+                    if value != 'custom':
+                        p = PRESETS[value]
+                        state['columns'] = p.columns
+                        state['rows'] = p.rows
+                        state['_syncing'] = True
+                        try:
+                            cols_input.set_value(p.columns)
+                            rows_input.set_value(p.rows)
+                        finally:
+                            state['_syncing'] = False
+                    update_preview()
+
+                def on_cols_change(value):
+                    if state['_syncing']:
+                        return
+                    new_cols = int(value) if value else 10
+                    if new_cols == state['columns']:
+                        return
+                    state['columns'] = new_cols
+                    state['preset'] = 'custom'
+                    state['_syncing'] = True
+                    try:
+                        preset_select.set_value('custom')
+                    finally:
+                        state['_syncing'] = False
+                    update_preview()
+
+                def on_rows_change(value):
+                    if state['_syncing']:
+                        return
+                    new_rows = int(value) if value else 72
+                    if new_rows == state['rows']:
+                        return
+                    state['rows'] = new_rows
+                    state['preset'] = 'custom'
+                    state['_syncing'] = True
+                    try:
+                        preset_select.set_value('custom')
+                    finally:
+                        state['_syncing'] = False
+                    update_preview()
+
                 preset_select = ui.select(
                     list(PRESETS.keys()) + ['custom'],
                     value=state['preset'], label='Preset',
                     on_change=lambda e: (
-                        state.update({'preset': e.value}),
-                        state.update({'columns': PRESETS[e.value].columns,
-                                      'rows': PRESETS[e.value].rows}
-                                     if e.value != 'custom' else {}),
-                        cols_input.set_value(state['columns']),
-                        rows_input.set_value(state['rows']),
-                        update_preview(),
-                    )
+                        None if state['_syncing'] else on_preset_change(e.value)
+                    ),
                 ).props('outlined dense').classes('w-full')
 
                 with ui.row().classes('w-full gap-2'):
                     cols_input = ui.number('Cols', value=state['columns'],
                                            min=4, max=100, step=2,
-                                           on_change=lambda e: (
-                                               state.update({'columns': int(e.value) if e.value else 10,
-                                                             'preset': 'custom'}),
-                                               preset_select.set_value('custom'),
-                                               update_preview(),
-                                           )).props('outlined dense').classes('flex-1')
+                                           on_change=lambda e: on_cols_change(e.value),
+                                           ).props('outlined dense').classes('flex-1')
 
                     rows_input = ui.number('Rows', value=state['rows'],
                                             min=10, max=500,
-                                            on_change=lambda e: (
-                                                state.update({'rows': int(e.value) if e.value else 72,
-                                                              'preset': 'custom'}),
-                                                preset_select.set_value('custom'),
-                                                update_preview(),
-                                            )).props('outlined dense').classes('flex-1')
+                                            on_change=lambda e: on_rows_change(e.value),
+                                            ).props('outlined dense').classes('flex-1')
 
                     ui.number('Margin', value=state['margin'],
                               min=0, max=20,
