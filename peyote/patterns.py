@@ -475,6 +475,46 @@ def kinetic(columns: int, rows: int,
     return grid
 
 
+def day_to_night(columns: int, rows: int,
+                 color1: int = 1, color2: int = 2,
+                 bg: int = 0) -> list[list[int]]:
+    """Day to Night peyote design — diagonal weave around a central teal spine.
+
+    Transcribed from the original 10-wide × 72-row chart. The foundation
+    reads 1W, 1B, 1W, 1B, 2T, 1B, 1W, 1B, 1W, and rows 3+ follow a 4-row
+    cycle of two "2B, 1T, 2B" rows then two "2W, 1T, 2B" rows stitched in
+    alternating directions. Because the stitch direction flips on each row,
+    the "2W, 1T, 2B" pair renders as mirrored halves, producing diagonal
+    blocks of day and night around a central column of teal. The foundation
+    rows coincide with the "W" cycle position, so one 4-row cycle drives
+    every row from the start.
+
+    For columns > 10 the 10-wide motif tiles horizontally.
+    """
+    W, B, T = bg, color1, color2
+    motif = []
+    for r in range(rows):
+        row = [W] * 10
+        is_odd = (r + 1) % 2 == 1
+        # Cycle pos 0,1 → "2B, 1T, 2B"; 2,3 → "2W, 1T, 2B".
+        # Offset by 2 so r=0,1 land on the W pair (matching the foundation).
+        all_black = (r + 2) % 4 < 2
+        if is_odd:
+            # Active cols 1, 3, 5, 7, 9. Stitched ←: col 9 is the first bead.
+            if all_black:
+                row[1], row[3], row[5], row[7], row[9] = B, B, T, B, B
+            else:
+                row[1], row[3], row[5], row[7], row[9] = B, B, T, W, W
+        else:
+            # Active cols 0, 2, 4, 6, 8. Stitched →: col 0 is the first bead.
+            if all_black:
+                row[0], row[2], row[4], row[6], row[8] = B, B, T, B, B
+            else:
+                row[0], row[2], row[4], row[6], row[8] = W, W, T, B, B
+        motif.append(row)
+    return [[m[c % 10] for c in range(columns)] for m in motif]
+
+
 def honeycomb(columns: int, rows: int, size: int = 3,
               color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
     """Hexagonal cells — alternating cell fills with shared walls."""
@@ -523,6 +563,7 @@ PATTERN_CATALOG: dict[str, callable] = {
     'braid': braid,
     'honeycomb': honeycomb,
     'kinetic': kinetic,
+    'day-to-night': day_to_night,
 }
 
 
@@ -537,6 +578,7 @@ SINGLE_COLOR_PATTERNS: list[str] = [
 # Accent 1 and Accent 2 and are the ones that benefit from the full palette.
 TWO_COLOR_PATTERNS: list[str] = [
     'argyle', 'scales', 'flames', 'braid', 'honeycomb', 'kinetic',
+    'day-to-night',
 ]
 
 

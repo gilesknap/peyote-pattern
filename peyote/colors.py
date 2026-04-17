@@ -84,6 +84,7 @@ PALETTE_DEFS: dict[str, list[tuple[str, str]]] = {
     'berry':      [('#FFF0F5', 'Lavender'), ('#C2185B', 'Raspberry'), ('#4A148C', 'Plum')],
     'gold':       [('#FFFDE7', 'Ivory'), ('#FFD600', 'Gold'), ('#FF6F00', 'Amber')],
     'teal':       [('#E0F2F1', 'Pale Teal'), ('#00897B', 'Teal'), ('#004D40', 'Dark Teal')],
+    'day-to-night': [('#FAFAFA', 'Day'), ('#1A1A1A', 'Night'), ('#00838F', 'Dusk')],
 }
 
 
