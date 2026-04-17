@@ -157,14 +157,19 @@ def border(columns: int, rows: int, thickness: int = 2,
 
 def dots(columns: int, rows: int, spacing: int = 4,
          color: int = 1, bg: int = 0) -> list[list[int]]:
-    """Scattered dot pattern."""
+    """Scattered dot pattern.
+
+    The +1 offset on the column conditions lands each dot on an active
+    peyote cell (rows alternate between odd/even active cols).
+    """
+    half = spacing // 2
     grid = []
     for r in range(rows):
         row = []
         for c in range(columns):
-            if r % spacing == 0 and c % spacing == 0:
+            if r % spacing == 0 and c % spacing == 1 % spacing:
                 row.append(color)
-            elif r % spacing == spacing // 2 and c % spacing == spacing // 2:
+            elif r % spacing == half and c % spacing == (half + 1) % spacing:
                 row.append(color)
             else:
                 row.append(bg)
@@ -365,7 +370,9 @@ def braid(columns: int, rows: int, period: int = 8, width: int = 2,
 # original chart. Values: 0=background (pink), 1=accent1 (red),
 # 2=accent2 (black). Rows 0-8 are the lead-in, rows 9-24 form a 16-row
 # cycle that repeats three times through row 64, then rows 65-71 are an
-# all-background tail.
+# all-background tail. Stored as the verbatim source chart and mirrored
+# left-to-right at render time so each bead lands on an active peyote
+# cell under the odd-row-odd-col / even-row-even-col parity.
 _KINETIC_BASE: list[list[int]] = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -452,7 +459,9 @@ def kinetic(columns: int, rows: int,
     the peyote parity correct — and the 10-wide motif wraps horizontally.
     """
     color_map = [bg, color1, color2]
-    base = _KINETIC_BASE
+    # Mirror each source row L-R so bead positions land on active peyote
+    # cells under the odd-row-odd-col / even-row-even-col parity.
+    base = [row[::-1] for row in _KINETIC_BASE]
     cycle_start, cycle_len = 9, 16
     base_rows = len(base)
 
