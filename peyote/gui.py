@@ -965,17 +965,19 @@ def create_ui():
                     ui.notify('Loaded pattern', type='positive')
 
                 ui.label('File').classes('text-subtitle1 font-bold mt-4')
-                with ui.column().classes('w-full gap-1').style(
+                proc_upload = ui.upload(on_upload=on_procedural_upload,
+                                        auto_upload=True, max_files=1
+                                        ).props('accept=.json').style('display:none')
+                with ui.row().classes('w-full gap-1 no-wrap').style(
                     'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
                     'padding: 6px 8px;'
                 ):
-                    ui.button('Save .json', icon='save',
+                    ui.button('Save', icon='save',
                               on_click=lambda: save_pattern_json()
-                              ).props('flat dense').classes('w-full')
-                    ui.upload(label='Load .json',
-                              on_upload=on_procedural_upload,
-                              auto_upload=True,
-                              ).props('accept=.json flat dense').classes('w-full')
+                              ).props('flat dense').classes('flex-1')
+                    ui.button('Load', icon='folder_open',
+                              on_click=lambda: proc_upload.run_method('pickFiles')
+                              ).props('flat dense').classes('flex-1')
 
                 # Zoom
                 def set_zoom(v):
@@ -1213,14 +1215,16 @@ def create_ui():
 
                     # File I/O
                     ui.label('File').classes('text-caption text-grey-7 mt-2')
-                    with ui.row().classes('w-full gap-1'):
-                        ui.button('Save .json', icon='save',
-                                  on_click=do_save_json).props('flat dense').classes('flex-1')
-                    ui.upload(
-                        label='Load .json',
-                        on_upload=on_upload,
-                        auto_upload=True,
-                    ).props('accept=.json flat dense').classes('w-full')
+                    editor_upload = ui.upload(on_upload=on_upload,
+                                              auto_upload=True, max_files=1
+                                              ).props('accept=.json').style('display:none')
+                    with ui.row().classes('w-full gap-1 no-wrap'):
+                        ui.button('Save', icon='save',
+                                  on_click=do_save_json
+                                  ).props('flat dense').classes('flex-1')
+                        ui.button('Load', icon='folder_open',
+                                  on_click=lambda: editor_upload.run_method('pickFiles')
+                                  ).props('flat dense').classes('flex-1')
 
                     # Zoom
                     ui.label('Zoom').classes('text-subtitle1 font-bold mt-4')
