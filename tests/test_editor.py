@@ -296,10 +296,11 @@ def test_json_roundtrip_identity():
     paint_pencil(state, 5, 4)
     paint_pencil(state, 10, 9)
 
-    s = fabric_to_json(state)
-    fabric2, config2, palette2, title2 = fabric_from_json(s)
+    s = fabric_to_json(state, progress_row=7)
+    fabric2, config2, palette2, title2, progress2 = fabric_from_json(s)
     assert fabric2 == state.fabric
     assert config2.columns == state.config.columns
     assert config2.rows == state.config.rows
     assert palette2.colors == state.palette.colors
     assert title2 == state.title
+    assert progress2 == 7

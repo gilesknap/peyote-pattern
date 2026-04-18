@@ -620,13 +620,14 @@ def make_overlay_svg(state: EditorState, config: BeadConfig) -> str:
 
 # ─── JSON I/O ──────────────────────────────────────────────────────────
 
-def fabric_to_json(state: EditorState) -> str:
+def fabric_to_json(state: EditorState, progress_row: int = 0) -> str:
     return json.dumps(
-        _state_to_dict(state.fabric, state.config, state.palette, state.title),
+        _state_to_dict(state.fabric, state.config, state.palette,
+                       state.title, progress_row),
         indent=2,
     )
 
 
 def fabric_from_json(json_str: str) -> tuple[list[list[int]], BeadConfig,
-                                             ColorPalette, str]:
+                                             ColorPalette, str, int]:
     return _dict_to_state(json.loads(json_str))

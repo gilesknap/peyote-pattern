@@ -124,7 +124,7 @@ def main():
     # Build fabric
     if args.fabric:
         # Load from JSON
-        fabric, loaded_config, loaded_palette, loaded_title = load_json(args.fabric)
+        fabric, loaded_config, loaded_palette, loaded_title, _ = load_json(args.fabric)
         config = loaded_config
         palette = loaded_palette
         title = args.title or loaded_title or 'Custom Pattern'

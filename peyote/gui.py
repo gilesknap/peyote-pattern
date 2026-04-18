@@ -6,7 +6,7 @@ import io
 import json as json_mod
 from pathlib import Path
 
-from nicegui import ui
+from nicegui import app, ui
 
 from peyote import editor as ed
 from peyote.colors import PALETTE_DEFS, ColorPalette, darken
@@ -15,7 +15,7 @@ from peyote.compose import (
     compose_text_with_background,
     compose_text_with_border,
 )
-from peyote.export import render_combined_png
+from peyote.export import _dict_to_state, _state_to_dict, render_combined_png
 from peyote.font import text_to_fabric
 from peyote.font_ttf import DEFAULT_FONT_NAME, available_fonts, resolve_font
 from peyote.grid import count_beads
@@ -31,6 +31,20 @@ from peyote.renderer import (
     pattern_checkbox_bounds,
 )
 from peyote.sizing import PRESETS, BeadConfig
+
+
+STORAGE_KEY = 'peyote_state_v1'
+
+# Keys in `state` that are persisted across browser sessions. Excludes derived
+# (_fabric/_config/_palette/_title), transient (editor, _syncing, mode), and
+# the custom edit which is persisted separately as 'custom_state'.
+PERSISTED_KEYS = (
+    'text', 'preset', 'columns', 'rows', 'layout', 'pattern',
+    'margin', 'gap', 'repeat', 'font_mode', 'font_name', 'rotate',
+    'palette_name', 'bg_color', 'text_color', 'accent1_color', 'accent2_color',
+    'zoom', 'editor_zoom', 'save_filename', 'save_folder',
+    'progress_row', 'custom',
+)
 
 
 TOOL_ICONS = [
@@ -161,6 +175,46 @@ def create_ui():
         'progress_row': 0,      # rows 1..progress_row are marked complete in pattern view
     }
 
+    # ── Persistence ───────────────────────────────────────────────────
+    def persist_state():
+        """Write the current session to app.storage.user."""
+        try:
+            data = {k: state[k] for k in PERSISTED_KEYS if k in state}
+            if state.get('custom') and state.get('_fabric') is not None:
+                data['custom_state'] = _state_to_dict(
+                    state['_fabric'], state['_config'],
+                    state['_palette'], state.get('_title', ''),
+                    state.get('progress_row', 0),
+                )
+            app.storage.user[STORAGE_KEY] = data
+        except Exception:
+            # Storage is best-effort; never break the UI if it's unavailable.
+            pass
+
+    def restore_state():
+        """Load any saved session into `state`. Returns True if custom_state was restored."""
+        data = app.storage.user.get(STORAGE_KEY)
+        if not isinstance(data, dict):
+            return False
+        for k in PERSISTED_KEYS:
+            if k in data:
+                state[k] = data[k]
+        cs = data.get('custom_state')
+        if state.get('custom') and isinstance(cs, dict):
+            try:
+                fabric, config, palette, title, progress = _dict_to_state(cs)
+            except Exception:
+                return False
+            state['_fabric'] = fabric
+            state['_config'] = config
+            state['_palette'] = palette
+            state['_title'] = title
+            # progress_row already came from PERSISTED_KEYS, but prefer the
+            # custom_state value if present (they should agree).
+            state['progress_row'] = progress
+            return True
+        return False
+
     def update_preview():
         # In editor mode, procedural changes are suppressed — the editor
         # owns the fabric. Controls are disabled, but an in-flight change
@@ -200,6 +254,7 @@ def create_ui():
             state['_title'] = title
 
             refresh_bead_count(fabric, config, palette)
+            persist_state()
 
         except Exception as e:
             bead_count_container.clear()
@@ -317,6 +372,7 @@ def create_ui():
                 else:
                     state['progress_row'] = N_click
                 rerender_pattern()
+                persist_state()
                 return
 
     def done_editor():
@@ -328,6 +384,7 @@ def create_ui():
             state['custom'] = True
         exit_to_procedural()
         render_current()
+        persist_state()
 
     def discard_editor():
         # Throw away the editor session. state['_fabric'] still holds the
@@ -357,13 +414,31 @@ def create_ui():
         base = Path(folder).expanduser() if folder.strip() else _default_save_folder()
         return (base / name).expanduser().resolve()
 
-    def _write_editor_json(path: Path) -> None:
-        es = state['editor']
-        if es is None:
+    def _current_pattern_sources():
+        """Return (fabric, config, palette, title, progress_row) for saving.
+
+        Prefers the live editor when in editor mode, else the outer procedural
+        or custom fabric. Returns None if nothing has been rendered yet.
+        """
+        es = state.get('editor')
+        if es is not None:
+            return (es.fabric, es.config, es.palette, es.title,
+                    state.get('progress_row', 0))
+        fabric = state.get('_fabric')
+        if fabric is None:
+            return None
+        return (fabric, state['_config'], state['_palette'],
+                state.get('_title', ''), state.get('progress_row', 0))
+
+    def _write_pattern_json(path: Path) -> None:
+        src = _current_pattern_sources()
+        if src is None:
             return
+        fabric, config, palette, title, progress_row = src
+        payload = _state_to_dict(fabric, config, palette, title, progress_row)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(ed.fabric_to_json(es), encoding='utf-8')
+            path.write_text(json_mod.dumps(payload, indent=2), encoding='utf-8')
         except OSError as err:
             ui.notify(f'Save failed: {err}', type='negative')
             return
@@ -388,8 +463,9 @@ def create_ui():
 
     def prompt_save_filename(after_save) -> None:
         """Ask for folder + filename, write JSON (with overwrite confirm), then call after_save()."""
-        es = state['editor']
-        default_name = (es.title if es and es.title else 'peyote-pattern')
+        src = _current_pattern_sources()
+        src_title = src[3] if src else ''
+        default_name = src_title if src_title else 'peyote-pattern'
         # Pre-populate from the last save when re-prompting, else default folder.
         if state.get('save_filename'):
             prev = Path(state['save_filename'])
@@ -417,7 +493,8 @@ def create_ui():
                     def do_save():
                         state['save_filename'] = str(path)
                         state['save_folder'] = str(path.parent)
-                        _write_editor_json(path)
+                        _write_pattern_json(path)
+                        persist_state()
                         after_save()
 
                     _confirm_overwrite_then(path, do_save)
@@ -425,7 +502,7 @@ def create_ui():
                 ui.button('Save', on_click=confirm).props('color=primary')
         dlg.open()
 
-    def save_editor_json(after_save=lambda: None) -> None:
+    def save_pattern_json(after_save=lambda: None) -> None:
         """Write JSON using the remembered path, or prompt on first save."""
         name = state.get('save_filename')
         if not name:
@@ -434,7 +511,7 @@ def create_ui():
         path = Path(name)
 
         def do_save():
-            _write_editor_json(path)
+            _write_pattern_json(path)
             after_save()
 
         _confirm_overwrite_then(path, do_save)
@@ -454,7 +531,7 @@ def create_ui():
 
                 def save_and_close():
                     dlg.close()
-                    save_editor_json(done_editor)
+                    save_pattern_json(done_editor)
 
                 def save_as_and_close():
                     dlg.close()
@@ -585,6 +662,9 @@ def create_ui():
                     'peyote-pattern.json')
 
     # ── Layout ────────────────────────────────────────────────────────
+    # Restore any prior session before widgets read state defaults.
+    restored_custom = restore_state()
+
     ui.page_title('Peyote Pattern Designer')
 
     with ui.header().classes('bg-primary'):
@@ -861,6 +941,39 @@ def create_ui():
                     ui.button('JSON', on_click=download_json,
                               icon='data_object').props('flat dense').classes('flex-1')
 
+                # File (save/load pattern + progress)
+                async def on_procedural_upload(e):
+                    try:
+                        text = await e.file.text()
+                        fabric, config, palette, title, progress = (
+                            ed.fabric_from_json(text))
+                    except Exception as err:
+                        ui.notify(f'Load failed: {err}', type='negative')
+                        return
+                    state['_fabric'] = fabric
+                    state['_config'] = config
+                    state['_palette'] = palette
+                    state['_title'] = title
+                    state['custom'] = True
+                    state['progress_row'] = progress
+                    state['save_filename'] = None
+                    render_current()
+                    persist_state()
+                    ui.notify('Loaded pattern', type='positive')
+
+                ui.label('File').classes('text-subtitle1 font-bold mt-4')
+                with ui.column().classes('w-full gap-1').style(
+                    'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
+                    'padding: 6px 8px;'
+                ):
+                    ui.button('Save .json', icon='save',
+                              on_click=lambda: save_pattern_json()
+                              ).props('flat dense').classes('w-full')
+                    ui.upload(label='Load .json',
+                              on_upload=on_procedural_upload,
+                              auto_upload=True,
+                              ).props('accept=.json flat dense').classes('w-full')
+
                 # Zoom
                 def set_zoom(v):
                     v = max(100, min(800, int(v)))
@@ -961,12 +1074,12 @@ def create_ui():
             def do_save_json():
                 if state['editor'] is None:
                     return
-                save_editor_json()
+                save_pattern_json()
 
             async def on_upload(e):
                 try:
                     text = await e.file.text()
-                    fabric, config, palette, title = ed.fabric_from_json(text)
+                    fabric, config, palette, title, progress = ed.fabric_from_json(text)
                 except Exception as err:
                     ui.notify(f'Load failed: {err}', type='negative')
                     return
@@ -991,9 +1104,11 @@ def create_ui():
                 state['_title'] = title
                 state['_config'] = config
                 state['custom'] = True
+                state['progress_row'] = progress
                 state['save_filename'] = None
                 build_editor_panel()
                 refresh_fabric_from_editor()
+                persist_state()
                 ui.notify('Loaded pattern', type='positive')
 
             editor_zoom_slider = None
@@ -1006,6 +1121,7 @@ def create_ui():
                 fabric_container.style(f'width: {v}px;')
                 if editor_zoom_slider is not None:
                     editor_zoom_slider.value = v
+                persist_state()
 
             def build_editor_panel():
                 nonlocal editor_zoom_slider
@@ -1143,12 +1259,17 @@ def create_ui():
                         on_mouse=on_fabric_mouse,
                     ).classes('w-full')
 
-    # Initial render
-    update_preview()
+    # Initial render: if we restored a custom edit, draw it directly so we
+    # don't regenerate from procedural settings and wipe it.
+    if restored_custom:
+        render_current()
+    else:
+        update_preview()
 
 
 def main(reload: bool = False):
-    ui.run(title='Peyote Pattern Designer', port=8080, reload=reload)
+    ui.run(title='Peyote Pattern Designer', port=8080,
+           reload=reload, storage_secret='peyote-pattern-local')
 
 
 if __name__ in {'__main__', '__mp_main__'}:

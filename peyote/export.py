@@ -103,7 +103,8 @@ def save_pdf(fabric: list[list[int]], title: str,
 
 
 def _state_to_dict(fabric: list[list[int]], config: BeadConfig,
-                   palette: ColorPalette, title: str = '') -> dict:
+                   palette: ColorPalette, title: str = '',
+                   progress_row: int = 0) -> dict:
     """Serialize project state to a plain dict."""
     return {
         'title': title,
@@ -120,33 +121,43 @@ def _state_to_dict(fabric: list[list[int]], config: BeadConfig,
             'names': {str(k): v for k, v in palette.names.items()},
         },
         'fabric': fabric,
+        'progress_row': progress_row,
     }
 
 
-def _dict_to_state(data: dict) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
+def _dict_to_state(data: dict) -> tuple[list[list[int]], BeadConfig,
+                                         ColorPalette, str, int]:
     config = BeadConfig(**data['config'])
     palette = ColorPalette.from_pairs([
         (data['palette']['colors'][str(i)], data['palette']['names'][str(i)])
         for i in range(len(data['palette']['colors']))
     ])
-    return data['fabric'], config, palette, data.get('title', '')
+    return (data['fabric'], config, palette,
+            data.get('title', ''),
+            int(data.get('progress_row', 0)))
 
 
 def save_json(fabric: list[list[int]], config: BeadConfig,
               palette: ColorPalette, title: str = '',
-              output: str = 'peyote-pattern.json') -> str:
+              output: str = 'peyote-pattern.json',
+              progress_row: int = 0) -> str:
     """Save full project state as JSON."""
     with open(output, 'w') as f:
-        json.dump(_state_to_dict(fabric, config, palette, title), f, indent=2)
+        json.dump(
+            _state_to_dict(fabric, config, palette, title, progress_row),
+            f, indent=2,
+        )
     return output
 
 
-def load_json_from_str(s: str) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
+def load_json_from_str(s: str) -> tuple[list[list[int]], BeadConfig,
+                                         ColorPalette, str, int]:
     """Load project state from a JSON string."""
     return _dict_to_state(json.loads(s))
 
 
-def load_json(path: str) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
+def load_json(path: str) -> tuple[list[list[int]], BeadConfig,
+                                   ColorPalette, str, int]:
     """Load project state from JSON file."""
     with open(path) as f:
         return load_json_from_str(f.read())
