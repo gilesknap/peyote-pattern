@@ -1,5 +1,6 @@
 """NiceGUI-based peyote pattern designer."""
 
+import argparse
 import base64
 import copy
 import io
@@ -1275,8 +1276,16 @@ def create_ui():
         update_preview(reset_progress=False)
 
 
-def main(reload: bool = False):
-    ui.run(title='Peyote Pattern Designer', port=8080,
+def main(reload: bool = False, port: int | None = None):
+    if port is None:
+        parser = argparse.ArgumentParser(
+            prog='peyote-gui',
+            description='Peyote Pattern Designer Web GUI')
+        parser.add_argument('--port', '-p', type=int, default=8080,
+                            help='HTTP port to listen on (default: 8080)')
+        args = parser.parse_args()
+        port = args.port
+    ui.run(title='Peyote Pattern Designer', port=port,
            reload=reload, storage_secret='peyote-pattern-local')
 
 
