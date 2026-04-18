@@ -215,7 +215,7 @@ def create_ui():
             return True
         return False
 
-    def update_preview():
+    def update_preview(reset_progress: bool = True):
         # In editor mode, procedural changes are suppressed — the editor
         # owns the fabric. Controls are disabled, but an in-flight change
         # event from a widget transition shouldn't stomp edits.
@@ -232,9 +232,12 @@ def create_ui():
                 gap=state['gap'], repeat=state['repeat'])
 
             # Regenerating from procedural settings wipes any kept custom edits
-            # and the user's tick-off progress on the pattern view.
+            # and the user's tick-off progress on the pattern view. The initial
+            # restore from browser storage passes reset_progress=False so the
+            # ticked-off rows survive a refresh.
             state['custom'] = False
-            state['progress_row'] = 0
+            if reset_progress:
+                state['progress_row'] = 0
 
             fabric_svg = render_svg(fabric, title, config, palette, view='fabric')
             fabric_img.set_source(_svg_data_url(fabric_svg))
@@ -1260,11 +1263,12 @@ def create_ui():
                     ).classes('w-full')
 
     # Initial render: if we restored a custom edit, draw it directly so we
-    # don't regenerate from procedural settings and wipe it.
+    # don't regenerate from procedural settings and wipe it. Otherwise
+    # rebuild from procedural settings but preserve any restored progress.
     if restored_custom:
         render_current()
     else:
-        update_preview()
+        update_preview(reset_progress=False)
 
 
 def main(reload: bool = False):
