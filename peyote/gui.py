@@ -1,6 +1,7 @@
 """NiceGUI-based peyote pattern designer."""
 
 import argparse
+import asyncio
 import base64
 import copy
 import io
@@ -145,6 +146,7 @@ FILE_API_JS = '''
 window.peyoteFileApi = {
   handle: null,
   available() { return typeof window.showSaveFilePicker === 'function'; },
+  hasHandle() { return this.handle !== null; },
   async save(b64, suggestedName, forcePicker) {
     const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
     const fallback = () => {
@@ -522,8 +524,52 @@ def create_ui():
             ui.notify(f'Saved {name}', type='positive')
         after_save()
 
+    async def _has_open_handle() -> bool:
+        try:
+            res = await ui.run_javascript(
+                'return window.peyoteFileApi.hasHandle();', timeout=5.0)
+        except Exception:
+            return False
+        return bool(res)
+
+    def _confirm_overwrite(name: str):
+        """Show an overwrite dialog. Returns 'overwrite', 'save_as' or 'cancel'."""
+        future = asyncio.get_event_loop().create_future()
+
+        def resolve(value):
+            if not future.done():
+                future.set_result(value)
+            dlg.close()
+
+        with ui.dialog() as dlg, ui.card():
+            ui.label(f'Overwrite {name}?').classes('text-subtitle1')
+            ui.label('The existing file will be replaced.').classes(
+                'text-caption text-grey-7')
+            with ui.row().classes('w-full justify-end gap-2'):
+                ui.button('Cancel', on_click=lambda: resolve('cancel')
+                          ).props('flat')
+                ui.button('Save As', on_click=lambda: resolve('save_as')
+                          ).props('flat')
+                ui.button('Overwrite', on_click=lambda: resolve('overwrite')
+                          ).props('color=primary')
+        dlg.on('hide', lambda _: resolve('cancel'))
+        dlg.open()
+        return future
+
     async def save_pattern_json(after_save=lambda: None) -> None:
         """Save through the open file handle, or prompt for a location on first save."""
+        if _current_pattern_sources() is None:
+            return
+        # Only prompt when we're about to silently overwrite via a held handle.
+        # No handle = the native picker will open and handle confirmation itself.
+        if await _has_open_handle():
+            choice = await _confirm_overwrite(
+                state.get('current_filename') or _suggested_filename())
+            if choice == 'cancel':
+                return
+            if choice == 'save_as':
+                await _save_via_browser(force_picker=True, after_save=after_save)
+                return
         await _save_via_browser(force_picker=False, after_save=after_save)
 
     async def save_pattern_json_as(after_save=lambda: None) -> None:
