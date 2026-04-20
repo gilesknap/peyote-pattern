@@ -10,23 +10,33 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 FONT_CATALOG: dict[str, list[str]] = {
     'Serif': [
         '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+        '/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
+        '/usr/share/fonts/liberation-serif/LiberationSerif-Regular.ttf',
     ],
     'Serif Bold': [
         '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf',
+        '/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif-Bold.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf',
+        '/usr/share/fonts/liberation-serif/LiberationSerif-Bold.ttf',
     ],
     'Sans': [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf',
     ],
     'Sans Bold': [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf',
     ],
     'Mono': [
         '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+        '/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
+        '/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf',
     ],
     'Ubuntu': [
         '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
