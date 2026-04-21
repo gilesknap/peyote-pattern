@@ -968,18 +968,45 @@ def create_ui():
                 # Colors
                 ui.label('Colors').classes('text-subtitle1 font-bold mt-4')
 
+                def on_color_change(slot, key, value):
+                    # Palette edits are cosmetic: remap the slot on the
+                    # existing _palette and re-render, never rebuild the
+                    # fabric. Keeps loaded custom patterns intact.
+                    if state.get('_syncing') or value is None:
+                        return
+                    state[key] = value
+                    pal = state.get('_palette')
+                    if pal is not None and slot in pal.colors:
+                        pal.colors[slot] = value
+                        render_current()
+                    persist_state()
+
                 def apply_palette(name):
                     colors = PALETTE_DEFS[name]
+                    state['palette_name'] = name
                     state['bg_color'] = colors[0][0]
                     state['text_color'] = colors[1][0]
                     accent1 = colors[2][0] if len(colors) > 2 else colors[1][0]
                     state['accent1_color'] = accent1
                     state['accent2_color'] = darken(accent1, factor=0.6)
-                    bg_picker.set_value(state['bg_color'])
-                    text_picker.set_value(state['text_color'])
-                    accent1_picker.set_value(state['accent1_color'])
-                    accent2_picker.set_value(state['accent2_color'])
-                    update_preview()
+                    state['_syncing'] = True
+                    try:
+                        bg_picker.set_value(state['bg_color'])
+                        text_picker.set_value(state['text_color'])
+                        accent1_picker.set_value(state['accent1_color'])
+                        accent2_picker.set_value(state['accent2_color'])
+                    finally:
+                        state['_syncing'] = False
+                    pal = state.get('_palette')
+                    if pal is not None:
+                        mapping = {0: state['bg_color'], 1: state['text_color'],
+                                   2: state['accent1_color'],
+                                   3: state['accent2_color']}
+                        for slot, hex_c in mapping.items():
+                            if slot in pal.colors:
+                                pal.colors[slot] = hex_c
+                        render_current()
+                    persist_state()
 
                 ui.select(
                     list(PALETTE_DEFS.keys()),
@@ -988,25 +1015,21 @@ def create_ui():
                 ).props('outlined dense').classes('w-full')
 
                 bg_picker = ui.color_input('Background', value=state['bg_color'],
-                                           on_change=lambda e: (
-                                               state.update({'bg_color': e.value}),
-                                               update_preview(),
-                                           )).props('outlined dense').classes('w-full')
+                                           on_change=lambda e: on_color_change(
+                                               0, 'bg_color', e.value)
+                                           ).props('outlined dense').classes('w-full')
                 text_picker = ui.color_input('Text', value=state['text_color'],
-                                             on_change=lambda e: (
-                                                 state.update({'text_color': e.value}),
-                                                 update_preview(),
-                                             )).props('outlined dense').classes('w-full')
+                                             on_change=lambda e: on_color_change(
+                                                 1, 'text_color', e.value)
+                                             ).props('outlined dense').classes('w-full')
                 accent1_picker = ui.color_input('Accent 1', value=state['accent1_color'],
-                                                on_change=lambda e: (
-                                                    state.update({'accent1_color': e.value}),
-                                                    update_preview(),
-                                                )).props('outlined dense').classes('w-full')
+                                                on_change=lambda e: on_color_change(
+                                                    2, 'accent1_color', e.value)
+                                                ).props('outlined dense').classes('w-full')
                 accent2_picker = ui.color_input('Accent 2', value=state['accent2_color'],
-                                                on_change=lambda e: (
-                                                    state.update({'accent2_color': e.value}),
-                                                    update_preview(),
-                                                )).props('outlined dense').classes('w-full')
+                                                on_change=lambda e: on_color_change(
+                                                    3, 'accent2_color', e.value)
+                                                ).props('outlined dense').classes('w-full')
 
                 # Bead Count
                 ui.label('Bead Count').classes('text-subtitle1 font-bold mt-4')
@@ -1086,7 +1109,9 @@ def create_ui():
                         return
                     state['zoom'] = v
                     zoom_slider.value = v
-                    update_preview()
+                    fabric_container.style(f'width: {v}px;')
+                    pattern_container.style(f'width: {v}px;')
+                    persist_state()
 
                 ui.label('Zoom').classes('text-subtitle1 font-bold mt-4')
                 with ui.row().classes('w-full items-center gap-1 no-wrap').style(
