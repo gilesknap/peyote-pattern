@@ -459,9 +459,14 @@ def kinetic(columns: int, rows: int,
     the peyote parity correct — and the 10-wide motif wraps horizontally.
     """
     color_map = [bg, color1, color2]
-    # Mirror each source row L-R so bead positions land on active peyote
-    # cells under the odd-row-odd-col / even-row-even-col parity.
-    base = [row[::-1] for row in _KINETIC_BASE]
+    # Source chart bead positions sit on odd indices in even rows and even
+    # indices in odd rows — opposite our even-count convention. Mirror L-R
+    # to land them on active cells. Odd-count peyote already matches the
+    # source's parity, so we keep the chart un-mirrored there.
+    if columns % 2 == 0:
+        base = [row[::-1] for row in _KINETIC_BASE]
+    else:
+        base = [list(row) for row in _KINETIC_BASE]
     cycle_start, cycle_len = 9, 16
     base_rows = len(base)
 
@@ -493,9 +498,12 @@ def day_to_night(columns: int, rows: int,
     """
     W, B, T = bg, color1, color2
     motif = []
+    # Odd-count peyote flips parity (R1 lands on motif cols 0,2,4,6,8
+    # instead of 1,3,5,7,9), so we swap the row-parity test in that case.
+    flip = (columns % 2 == 1)
     for r in range(rows):
         row = [W] * 10
-        is_odd = (r + 1) % 2 == 1
+        is_odd = ((r + 1) % 2 == 1) ^ flip
         # Cycle pos 0,1 → "2B, 1T, 2B"; 2,3 → "2W, 1T, 2B".
         # Offset by 2 so r=0,1 land on the W pair (matching the foundation).
         all_black = (r + 2) % 4 < 2
