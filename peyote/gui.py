@@ -878,7 +878,7 @@ def create_ui():
 
                 with ui.row().classes('w-full gap-2'):
                     cols_input = ui.number('Cols', value=state['columns'],
-                                           min=4, max=100, step=2,
+                                           min=3, max=100, step=1,
                                            on_change=lambda e: on_cols_change(e.value),
                                            ).props('outlined dense').classes('flex-1')
 

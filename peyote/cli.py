@@ -30,7 +30,9 @@ def main():
     parser.add_argument('--preset', choices=list(PRESETS.keys()),
                         help='Size preset (overrides --columns/--rows)')
     parser.add_argument('--columns', type=int, default=None,
-                        help='Number of bead columns (must be even, default: 10)')
+                        help='Number of bead columns (default: 10). Odd '
+                             'counts produce odd-count peyote where R1 has '
+                             'the larger bead count.')
     parser.add_argument('--rows', type=int, default=None,
                         help='Number of fabric rows (default: 72)')
 

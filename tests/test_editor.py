@@ -97,6 +97,61 @@ def test_hit_test_last_row():
     assert hit_test(cx, cy, fabric, config) == (4, 1)
 
 
+# ─── Odd-count peyote ──────────────────────────────────────────────────
+
+def test_odd_columns_r1_has_higher_count():
+    """Odd-count peyote: R1 must have the larger bead count for the
+    turnaround to work. Parity flips relative to even-count."""
+    config = BeadConfig(columns=11, rows=4)
+    assert config.cols_for_row(0) == [0, 2, 4, 6, 8, 10]   # R1: 6 beads
+    assert config.cols_for_row(1) == [1, 3, 5, 7, 9]       # R2: 5 beads
+    assert config.cols_for_row(2) == [0, 2, 4, 6, 8, 10]   # R3: 6
+    assert config.cols_for_row(3) == [1, 3, 5, 7, 9]       # R4: 5
+
+
+def test_even_columns_unchanged():
+    """Sanity-check that switching odd_cols/even_cols didn't break the
+    long-standing even-count layout."""
+    config = BeadConfig(columns=10, rows=2)
+    assert config.cols_for_row(0) == [1, 3, 5, 7, 9]
+    assert config.cols_for_row(1) == [0, 2, 4, 6, 8]
+
+
+def test_hit_test_odd_columns_r1_first_and_last():
+    """Both edge beads in R1 should be reachable when columns is odd —
+    R1 owns col 0 and col columns-1."""
+    config = BeadConfig(columns=11, rows=4)
+    fabric = blank_grid(config)
+    for fc in (0, 2, 4, 6, 8, 10):
+        cx, cy = bead_center(0, fc, config)
+        assert hit_test(cx, cy, fabric, config) == (0, fc)
+
+
+def test_hit_test_odd_columns_r2_offset():
+    """R2 beads on odd-count strip live at fc=1,3,...,columns-2."""
+    config = BeadConfig(columns=11, rows=4)
+    fabric = blank_grid(config)
+    for fc in (1, 3, 5, 7, 9):
+        cx, cy = bead_center(1, fc, config)
+        assert hit_test(cx, cy, fabric, config) == (1, fc)
+
+
+def test_paint_pencil_odd_columns_active_cells():
+    """fc=0 is active on R1 and inactive on R2 when columns is odd."""
+    config = BeadConfig(columns=11, rows=4)
+    fabric = blank_grid(config)
+    palette = ColorPalette.from_pairs([("#ffffff", "W"), ("#000000", "B")])
+    state = EditorState(
+        fabric=fabric, config=config, palette=palette, title="t",
+        snapshot=[r[:] for r in fabric],
+        snapshot_palette=ColorPalette.from_pairs([("#ffffff", "W")]),
+        active_color=1,
+    )
+    assert paint_pencil(state, 0, 0) is True   # R1 col 0 active
+    assert paint_pencil(state, 1, 0) is False  # R2 col 0 inactive
+    assert paint_pencil(state, 0, 10) is True  # R1 col 10 active
+
+
 # ─── paint_* ────────────────────────────────────────────────────────────
 
 def test_paint_pencil_writes_and_idempotent():

@@ -29,7 +29,7 @@ def make_fabric_svg(fabric: list[list[int]], title: str,
     """Render finished fabric view (interleaved brick appearance)."""
     PL = 30; PT = 8; PB = 20; PR = 30
     nrows = len(fabric)
-    bw, bh = config.bead_width, config.bead_height
+    bh = config.bead_height
     slot = config.slot
 
     last_y = PT + (nrows - 1) * bh / 2
@@ -38,15 +38,15 @@ def make_fabric_svg(fabric: list[list[int]], title: str,
 
     el = []
 
+    # bx = PL + fc * slot drives the brick offset directly off each row's
+    # active cols, so even and odd column counts both render correctly.
     for ri in range(nrows):
         N = ri + 1
-        is_odd = (N % 2 == 1)
         fab_cols = config.cols_for_row(ri)
-        x_offset = slot if is_odd else 0
         y = PT + (N - 1) * bh / 2
-        for bi, fc in enumerate(fab_cols):
+        for fc in fab_cols:
             val = fabric[ri][fc]
-            bx = PL + x_offset + bi * slot * 2
+            bx = PL + fc * slot
             el.append(_bead_el(bx, y, val, palette, config, label=False))
 
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{SH}" '

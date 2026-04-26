@@ -7,11 +7,16 @@ from dataclasses import dataclass
 class BeadConfig:
     """Configuration for a peyote stitch piece.
 
-    Even-count flat peyote: columns must be even.
-    Odd rows (N=1,3,5...) use odd-indexed columns (1,3,5,...).
-    Even rows (N=2,4,6...) use even-indexed columns (0,2,4,...).
-    This places a single bead at the start and stacks two at the
-    turnaround, matching the thread path of even-count peyote.
+    Even-count peyote (columns even): both rows have columns/2 beads.
+    Odd rows (N=1,3,5...) use cols 1,3,5,...; even rows (N=2,4,6...) use
+    cols 0,2,4,.... A single bead anchors the start and two stack at the
+    turnaround — the standard even-count thread path.
+
+    Odd-count peyote (columns odd): rows alternate counts. The first row
+    has the larger count (required for a correct turnaround). Odd rows
+    (R1, R3, ...) use cols 0,2,4,...,columns-1 — (columns+1)//2 beads.
+    Even rows (R2, R4, ...) use cols 1,3,5,...,columns-2 — columns//2
+    beads.
     """
     columns: int = 10
     rows: int = 72
@@ -19,10 +24,6 @@ class BeadConfig:
     bead_height: int = 22
     bead_margin: int = 1
     corner_radius: int = 5
-
-    def __post_init__(self):
-        if self.columns % 2 != 0:
-            raise ValueError(f"columns must be even for peyote stitch, got {self.columns}")
 
     @property
     def slot(self) -> int:
@@ -34,11 +35,14 @@ class BeadConfig:
 
     def odd_cols(self) -> list[int]:
         """Columns active on odd fabric rows (N=1,3,5...)."""
-        return list(range(1, self.columns, 2))
+        # For odd-count peyote we flip parity so R1 gets the higher count.
+        start = 0 if self.columns % 2 == 1 else 1
+        return list(range(start, self.columns, 2))
 
     def even_cols(self) -> list[int]:
         """Columns active on even fabric rows (N=2,4,6...)."""
-        return list(range(0, self.columns, 2))
+        start = 1 if self.columns % 2 == 1 else 0
+        return list(range(start, self.columns, 2))
 
     def cols_for_row(self, row_index: int) -> list[int]:
         """Active columns for a given 0-indexed fabric row."""
